@@ -50,18 +50,38 @@ function resolveUrl(candidate: string | null, base: string): string | null {
 	}
 }
 
+/** parse a page's HTML into preview metadata; exported for direct testing */
+export function parseMetadata(html: string, url: string): LinkMetadata {
+	const hostname = new URL(url).hostname;
+	const doc = new DOMParser().parseFromString(html, "text/html");
+
+	const title =
+		pickMeta(doc, ["og:title", "twitter:title"]) ??
+		doc.querySelector("title")?.textContent?.trim() ??
+		url;
+	const description =
+		pickMeta(doc, ["og:description", "twitter:description", "description"]) ?? "";
+	const image = resolveUrl(pickMeta(doc, ["og:image", "twitter:image"]), url);
+	const faviconHref =
+		doc.querySelector('link[rel="icon"]')?.getAttribute("href") ??
+		doc.querySelector('link[rel="shortcut icon"]')?.getAttribute("href") ??
+		"/favicon.ico";
+	const favicon = resolveUrl(faviconHref, url);
+
+	return { url, title, description, image, favicon, hostname };
+}
+
 export async function fetchMetadata(url: string): Promise<LinkMetadata> {
 	const cached = cache.get(url);
 	if (cached) return cached;
 
-	const hostname = new URL(url).hostname;
 	const fallback: LinkMetadata = {
 		url,
 		title: url,
 		description: "",
 		image: null,
 		favicon: null,
-		hostname,
+		hostname: new URL(url).hostname,
 	};
 
 	let html: string;
@@ -81,22 +101,7 @@ export async function fetchMetadata(url: string): Promise<LinkMetadata> {
 		return fallback;
 	}
 
-	const doc = new DOMParser().parseFromString(html, "text/html");
-
-	const title =
-		pickMeta(doc, ["og:title", "twitter:title"]) ??
-		doc.querySelector("title")?.textContent?.trim() ??
-		url;
-	const description =
-		pickMeta(doc, ["og:description", "twitter:description", "description"]) ?? "";
-	const image = resolveUrl(pickMeta(doc, ["og:image", "twitter:image"]), url);
-	const faviconHref =
-		doc.querySelector('link[rel="icon"]')?.getAttribute("href") ??
-		doc.querySelector('link[rel="shortcut icon"]')?.getAttribute("href") ??
-		"/favicon.ico";
-	const favicon = resolveUrl(faviconHref, url);
-
-	const meta: LinkMetadata = { url, title, description, image, favicon, hostname };
+	const meta = parseMetadata(html, url);
 	cachePut(url, meta);
 	return meta;
 }

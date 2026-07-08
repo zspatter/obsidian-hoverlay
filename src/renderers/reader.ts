@@ -9,8 +9,8 @@
  */
 import { requestUrl } from "obsidian";
 import { Readability } from "@mozilla/readability";
-import DOMPurify from "dompurify";
 import { BROWSER_UA } from "../metadata";
+import { absolutizeArticleUrls, sanitizeArticleHtml } from "./article";
 import type { RendererHandle } from "./types";
 
 export function renderReader(
@@ -59,34 +59,8 @@ export function renderReader(
 		}
 
 		const body = root.createDiv({ cls: "hoverlay-reader-body" });
-		body.innerHTML = DOMPurify.sanitize(article.content, {
-			FORBID_TAGS: [
-				"iframe", "form", "input", "button", "select", "textarea",
-				"object", "embed", "video", "audio", "source", "style", "svg", "math",
-			],
-			FORBID_ATTR: ["style", "srcset", "sizes"],
-		});
-
-		// the extracted fragment lives in our document now, so relative URLs
-		// must be resolved against the article's origin by hand
-		for (const img of Array.from(body.querySelectorAll("img"))) {
-			const src = img.getAttribute("src");
-			try {
-				if (!src) throw new Error();
-				img.setAttribute("src", new URL(src, url).href);
-			} catch {
-				img.remove();
-			}
-		}
-		for (const anchor of Array.from(body.querySelectorAll("a"))) {
-			const href = anchor.getAttribute("href");
-			try {
-				if (!href) throw new Error();
-				anchor.setAttribute("href", new URL(href, url).href);
-			} catch {
-				anchor.removeAttribute("href");
-			}
-		}
+		body.innerHTML = sanitizeArticleHtml(article.content);
+		absolutizeArticleUrls(body, url);
 
 		// links inside the article open externally instead of navigating anything
 		body.addEventListener("click", (evt) => {
