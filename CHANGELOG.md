@@ -6,6 +6,8 @@ All notable changes to Hoverlay are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-08
+
 ### Added
 
 - Hover previews inside Canvas text cards (canvas covers card content
@@ -15,6 +17,12 @@ All notable changes to Hoverlay are documented here. The format follows
   window, with per-window listeners and viewport math
 - Six more embed providers: Dailymotion (and dai.ly links), Streamable,
   Loom, Apple Music, Apple Podcasts and Deezer
+
+### Fixed
+
+- Link resolution no longer relies on constructor identity anywhere,
+  fixing editor links and reader clicks inside pop-out windows across
+  Obsidian versions
 
 ## [0.1.2] - 2026-07-08
 
@@ -81,7 +89,8 @@ Initial release.
   delays, per-domain preview modes and a domain blocklist
 - "Preview link under cursor" command, bindable to a hotkey
 
-[Unreleased]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.2...HEAD
+[Unreleased]: https://github.com/zspatter/obsidian-hoverlay/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.2...0.2.0
 [0.1.2]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/zspatter/obsidian-hoverlay/releases/tag/0.1.0
