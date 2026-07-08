@@ -8,7 +8,9 @@
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"test": "vitest run",
 		"check:e2e": "tsc --noEmit -p e2e",
-		"test:e2e": "npm run build && wdio run ./e2e/wdio.conf.mts"
+		"test:e2e": "npm run build && wdio run ./e2e/wdio.conf.mts",
+		"shots": "npm run build && wdio run ./e2e/screenshots.conf.mts && node e2e/screenshots/make-gif.mjs",
+		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
 	"keywords": [],
 	"author": "zspatter",
@@ -28,9 +30,11 @@
 		"@wdio/mocha-framework": "^9.29.1",
 		"builtin-modules": "^4.0.0",
 		"esbuild": "^0.25.0",
+		"gifenc": "^1.0.3",
 		"jsdom": "^29.1.1",
 		"mocha": "^10.8.2",
 		"obsidian": "latest",
+		"pngjs": "^7.0.0",
 		"tslib": "^2.6.0",
 		"tsx": "^4.23.0",
 		"typescript": "^5.5.0",

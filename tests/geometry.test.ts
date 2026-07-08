@@ -8,6 +8,7 @@ import {
 	ZOOM_MIN,
 	clampZoom,
 	dragPosition,
+	fitEmbedSize,
 	flyoutLeft,
 	maximizedRect,
 	popoverPosition,
@@ -129,6 +130,60 @@ describe("maximizedRect", () => {
 			top: 24,
 			width: 1280 - 48,
 			height: 800 - 48,
+		});
+	});
+});
+
+describe("fitEmbedSize", () => {
+	it("trims at most one dimension and never grows, across the grid", () => {
+		const sizes = [
+			{ width: 260, height: 180 },
+			{ width: 480, height: 308 },
+			{ width: 480, height: 600 },
+			{ width: 900, height: 300 },
+			{ width: 1200, height: 900 },
+		];
+		const hints = [{}, { height: 352 }, { height: 232 }, { aspectRatio: 16 / 9 }, { aspectRatio: 1 }];
+		for (const size of sizes) {
+			for (const hint of hints) {
+				const fitted = fitEmbedSize(size, hint);
+				expect(fitted.width).toBeLessThanOrEqual(size.width);
+				expect(fitted.height).toBeLessThanOrEqual(size.height);
+				const changed =
+					(fitted.width !== size.width ? 1 : 0) +
+					(fitted.height !== size.height ? 1 : 0);
+				expect(changed).toBeLessThanOrEqual(1);
+			}
+		}
+	});
+
+	it("fixed-height cards trim only the height", () => {
+		expect(fitEmbedSize({ width: 480, height: 600 }, { height: 352 })).toEqual({
+			width: 480,
+			height: 352,
+		});
+		// a popover shorter than the card is left alone
+		expect(fitEmbedSize({ width: 480, height: 300 }, { height: 352 })).toEqual({
+			width: 480,
+			height: 300,
+		});
+	});
+
+	it("letterboxed players trim whichever side is dead space", () => {
+		// too tall: height gives
+		expect(fitEmbedSize({ width: 800, height: 600 }, { aspectRatio: 16 / 9 })).toEqual({
+			width: 800,
+			height: 450,
+		});
+		// too wide: width gives
+		expect(fitEmbedSize({ width: 800, height: 300 }, { aspectRatio: 16 / 9 })).toEqual({
+			width: 533,
+			height: 300,
+		});
+		// already exact: untouched
+		expect(fitEmbedSize({ width: 800, height: 450 }, { aspectRatio: 16 / 9 })).toEqual({
+			width: 800,
+			height: 450,
 		});
 	});
 });

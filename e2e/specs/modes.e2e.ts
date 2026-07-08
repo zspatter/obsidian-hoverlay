@@ -64,8 +64,8 @@ describe("preview modes", function () {
 		await hoverAndWaitForPopover(VIDEO_LINK);
 		const webview = $(".hoverlay-webview");
 		await expect(webview).toExist();
-		expect(await webview.getAttribute("src")).toContain("youtube.com/embed/dQw4w9WgXcQ");
-		await expect($(HEADER_URL)).toHaveText("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+		expect(await webview.getAttribute("src")).toContain("youtube.com/embed/jNQXAC9IVRw");
+		await expect($(HEADER_URL)).toHaveText("https://www.youtube.com/watch?v=jNQXAC9IVRw");
 		// deliberate media starts audible, so the speaker offers Mute
 		await expect($('.hoverlay-header [aria-label="Mute"]')).toExist();
 	});

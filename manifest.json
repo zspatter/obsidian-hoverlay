@@ -2,8 +2,8 @@
 	"id": "hoverlay",
 	"name": "Hoverlay",
 	"version": "0.1.0",
-	"minAppVersion": "1.5.0",
-	"description": "Link previews on hover that work on real websites: live page preview on desktop, with a metadata card fallback everywhere else.",
+	"minAppVersion": "1.5.3",
+	"description": "Preview links on hover in a floating window: live page, reader view, or metadata card, with embedded media players.",
 	"author": "zspatter",
 	"authorUrl": "https://github.com/zspatter",
 	"isDesktopOnly": false

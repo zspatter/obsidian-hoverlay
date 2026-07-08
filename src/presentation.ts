@@ -5,7 +5,7 @@
  */
 import { matchDomainMode } from "./rules";
 import type { DomainModeRule, RenderMode } from "./rules";
-import { resolveEmbedUrl } from "./embeds";
+import { resolveEmbed } from "./embeds";
 
 export interface PresentationInput {
 	url: string;
@@ -20,6 +20,8 @@ export interface Presentation {
 	/** what the webview actually loads (the embed player URL for embeds) */
 	loadUrl: string;
 	isEmbed: boolean;
+	/** the embed's natural sizing, for whitespace trimming */
+	embedHint?: { height?: number; aspectRatio?: number };
 }
 
 export function choosePresentation(input: PresentationInput): Presentation {
@@ -38,10 +40,17 @@ export function choosePresentation(input: PresentationInput): Presentation {
 	// explicit webview mode forces the raw page, and a per-domain "embed"
 	// entry forces the player even with the global toggle off
 	const embedWanted = domainMode === "embed" || (mode === "auto" && enableEmbeds);
-	const embedUrl = embedWanted ? resolveEmbedUrl(url) : null;
+	const embed = embedWanted ? resolveEmbed(url) : null;
 
 	if ((mode === "auto" || mode === "webview") && isDesktop) {
-		return { kind: "webview", loadUrl: embedUrl ?? url, isEmbed: embedUrl !== null };
+		return {
+			kind: "webview",
+			loadUrl: embed?.url ?? url,
+			isEmbed: embed !== null,
+			embedHint: embed
+				? { height: embed.height, aspectRatio: embed.aspectRatio }
+				: undefined,
+		};
 	}
 	if (mode === "reader") {
 		return { kind: "reader", loadUrl: url, isEmbed: false };

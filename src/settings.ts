@@ -304,9 +304,25 @@ export class HoverlaySettingTab extends PluginSettingTab {
 				})
 			);
 
-		// with close-on-modifier-release, trigger keys are held for the popover's
-		// whole life, so they can't double as the zoom key; migrate a conflicting
-		// stored choice to a free key, or disable zoom when no key remains
+		// Page zoom is the static render zoom and always applies, so it is
+		// never disabled; only the live scroll-zoom key below varies
+		this.addNumberField(
+			new Setting(containerEl)
+				.setName("Page zoom")
+				.setDesc("Zoom for the live page preview, in percent (25 to 150)."),
+			{
+				min: 25,
+				max: 150,
+				step: 5,
+				displayScale: 100,
+				get: () => this.plugin.settings.webviewZoom,
+				set: (value) => (this.plugin.settings.webviewZoom = value),
+			}
+		);
+
+		// with close-on-modifier-release, trigger keys are held for the
+		// popover's whole life, so they can't double as the zoom key; migrate
+		// a conflicting stored choice to a free key, or to Off when none remain
 		const { modifiers, closeOnModifierRelease } = this.plugin.settings;
 		const conflictsApply = closeOnModifierRelease && modifiers.length > 0;
 		const resolvedZoom = resolveZoomModifier(
@@ -314,35 +330,22 @@ export class HoverlaySettingTab extends PluginSettingTab {
 			modifiers,
 			closeOnModifierRelease
 		);
-		if (resolvedZoom !== null && resolvedZoom !== this.plugin.settings.zoomModifier) {
-			this.plugin.settings.zoomModifier = resolvedZoom;
-			void this.plugin.saveSettings();
+		if (this.plugin.settings.zoomModifier !== "none") {
+			const migrated = resolvedZoom ?? "none";
+			if (migrated !== this.plugin.settings.zoomModifier) {
+				this.plugin.settings.zoomModifier = migrated;
+				void this.plugin.saveSettings();
+			}
 		}
-		const zoomDisabled = resolvedZoom === null;
 
-		const pageZoomSetting = new Setting(containerEl)
-			.setName("Page zoom")
-			.setDesc("Zoom for the live page preview, in percent (25 to 150).");
-		this.addNumberField(pageZoomSetting, {
-			min: 25,
-			max: 150,
-			step: 5,
-			displayScale: 100,
-			get: () => this.plugin.settings.webviewZoom,
-			set: (value) => (this.plugin.settings.webviewZoom = value),
-		});
-
-		let zoomKeyDesc = "Hold this key and scroll over an open preview to zoom it.";
-		if (zoomDisabled) {
-			zoomKeyDesc =
-				"Zoom is disabled: every available key is used by your trigger combination " +
-				"while close on modifier release is on.";
-		} else if (conflictsApply) {
+		let zoomKeyDesc =
+			"Hold this key and scroll over an open preview to zoom it. Off disables scroll zoom.";
+		if (conflictsApply) {
 			zoomKeyDesc +=
 				" Keys used by your trigger combination are unavailable while close on modifier release is on.";
 		}
 
-		const zoomKeySetting = new Setting(containerEl)
+		new Setting(containerEl)
 			.setName("Zoom key")
 			.setDesc(zoomKeyDesc)
 			.addDropdown((dropdown) => {
@@ -355,7 +358,8 @@ export class HoverlaySettingTab extends PluginSettingTab {
 					.addOption("ctrl", label("Ctrl/Cmd", "ctrl"))
 					.addOption("alt", label("Alt", "alt"))
 					.addOption("shift", label("Shift", "shift"))
-					.setValue(resolvedZoom ?? this.plugin.settings.zoomModifier)
+					.addOption("none", "Off")
+					.setValue(this.plugin.settings.zoomModifier)
 					.onChange(async (value) => {
 						this.plugin.settings.zoomModifier = value as ZoomModifier;
 						await this.plugin.saveSettings();
@@ -370,14 +374,6 @@ export class HoverlaySettingTab extends PluginSettingTab {
 					}
 				}
 			});
-
-		if (zoomDisabled) {
-			pageZoomSetting.setDisabled(true);
-			zoomKeySetting.setDisabled(true);
-			pageZoomSetting.settingEl.addClass("hoverlay-setting-disabled");
-			zoomKeySetting.settingEl.addClass("hoverlay-setting-disabled");
-		}
-
 	}
 
 	private displayFilteringSection(containerEl: HTMLElement): void {
