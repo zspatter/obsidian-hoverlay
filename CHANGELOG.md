@@ -22,7 +22,9 @@ Initial release.
 - Metadata card: OpenGraph/Twitter card with title, description, image and
   favicon; automatic fallback whenever a richer mode can't render
 - Embedded players: YouTube, Vimeo, Spotify and SoundCloud links load the
-  provider's embed player, preserving playlists and timestamps
+  provider's embed player, preserving playlists and timestamps; the popover
+  trims itself to the player's natural size (fixed card heights, 16:9
+  letterboxing), shrinking at most one dimension and never growing
 - Scheme-less links (`[site](www.example.com)`, bare `github.com/user` in
   editor text) are normalized, gated behind a known-TLD list and resolved
   against the vault so notes are never mistaken for domains

@@ -29,6 +29,7 @@ describe("choosePresentation: explicit cases", () => {
 			kind: "webview",
 			loadUrl: EMBED_RESULT,
 			isEmbed: true,
+			embedHint: { aspectRatio: 16 / 9 },
 		});
 	});
 
@@ -70,6 +71,7 @@ describe("choosePresentation: explicit cases", () => {
 			kind: "webview",
 			loadUrl: EMBED_RESULT,
 			isEmbed: true,
+			embedHint: { aspectRatio: 16 / 9 },
 		});
 	});
 
@@ -138,6 +140,12 @@ describe("choosePresentation: invariants across the full matrix", () => {
 								expect(result.loadUrl).toBe(EMBED_RESULT);
 							} else {
 								expect(result.loadUrl).toBe(url);
+							}
+							// sizing hints exist exactly for embeds
+							if (result.isEmbed) {
+								expect(result.embedHint).toBeDefined();
+							} else {
+								expect(result.embedHint).toBeUndefined();
 							}
 							// per-domain webview always means the raw page
 							if (entry === "webview") expect(result.isEmbed).toBe(false);

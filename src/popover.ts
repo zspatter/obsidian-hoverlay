@@ -7,11 +7,13 @@ import { normalizeUrl, sameCanonicalUrl } from "./links";
 import { resolveLinkAt, resolveEditorCursorLink } from "./link-resolver";
 import type { ResolvedLink } from "./link-resolver";
 import { choosePresentation } from "./presentation";
+import type { Presentation } from "./presentation";
 import {
 	RESIZE_HANDLES,
 	ZOOM_STEP,
 	clampZoom,
 	dragPosition,
+	fitEmbedSize,
 	flyoutLeft,
 	maximizedRect,
 	popoverPosition,
@@ -324,27 +326,61 @@ export class PopoverManager {
 		this.currentUrl = url;
 		this.displayedUrl = url;
 
-		const popover = this.buildShell(url);
-		this.placePopover(popover, anchor);
+		// mode/override/embed resolution lives in the pure presentation module
+		const presentation = choosePresentation({
+			url,
+			renderMode: this.plugin.settings.renderMode,
+			enableEmbeds: this.plugin.settings.enableEmbeds,
+			domainRules: this.plugin.domainModeRules,
+			isDesktop: Platform.isDesktopApp,
+		});
+
+		const size = this.popoverSizeFor(presentation);
+		const popover = this.buildShell(url, size);
+		this.placePopover(popover, anchor, size);
 		this.addResizeHandles(popover);
 		this.attachZoomWheel(popover);
 		this.attachHoverDismissal(popover, anchor);
-		this.mountRenderer(url);
+		this.mountRenderer(url, presentation);
 
 		// zoom key may already be held down when the popover opens
 		if (this.zoomKeyHeld()) this.addZoomShield();
 	}
 
-	/** popover, frame, header and content elements, at the configured size */
-	private buildShell(url: string): HTMLElement {
-		const { settings } = this.plugin;
+	/** header bar plus the frame border, in px; the rest is content */
+	private static readonly POPOVER_CHROME = 32;
 
+	/** the configured size, trimmed to an embed's natural content size so
+	 *  fixed-height cards and letterboxed players don't sit in whitespace */
+	private popoverSizeFor(presentation: Presentation): Size {
+		const { settings } = this.plugin;
+		const size = { width: settings.popoverWidth, height: settings.popoverHeight };
+		const hint = presentation.embedHint;
+		if (!hint) return size;
+
+		const chrome = PopoverManager.POPOVER_CHROME;
+		const fitted = fitEmbedSize(
+			{ width: size.width, height: size.height - chrome },
+			{
+				aspectRatio: hint.aspectRatio,
+				// fixed card heights are guest CSS px; the webview zoom scales them
+				height:
+					hint.height !== undefined
+						? Math.round(hint.height * settings.webviewZoom)
+						: undefined,
+			}
+		);
+		return { width: fitted.width, height: fitted.height + chrome };
+	}
+
+	/** popover, frame, header and content elements, at the given size */
+	private buildShell(url: string, size: Size): HTMLElement {
 		// the popover itself has visible overflow so the resize handles can
 		// overhang its bounds (pointer overshoot still counts as "inside");
 		// the frame provides the clipped, rounded visual box
 		const popover = document.body.createDiv({ cls: "hoverlay-popover" });
-		popover.style.width = px(settings.popoverWidth);
-		popover.style.height = px(settings.popoverHeight);
+		popover.style.width = px(size.width);
+		popover.style.height = px(size.height);
 		this.popoverEl = popover;
 
 		const frame = popover.createDiv({ cls: "hoverlay-frame" });
@@ -354,12 +390,15 @@ export class PopoverManager {
 		return popover;
 	}
 
-	private placePopover(popover: HTMLElement, anchor: HTMLElement | DOMRect): void {
+	private placePopover(
+		popover: HTMLElement,
+		anchor: HTMLElement | DOMRect,
+		size: Size
+	): void {
 		const rect = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
-		const { settings } = this.plugin;
 		const pos = popoverPosition(
 			{ left: rect.left, top: rect.top, bottom: rect.bottom },
-			{ width: settings.popoverWidth, height: settings.popoverHeight },
+			size,
 			viewportSize()
 		);
 		popover.style.left = px(pos.left);
@@ -395,18 +434,11 @@ export class PopoverManager {
 
 	/** renderer selection (via the pure presentation module), fallback and
 	 *  navigation wiring */
-	private mountRenderer(url: string): void {
+	private mountRenderer(url: string, presentation: Presentation): void {
 		const content = this.contentEl;
 		if (!content) return;
 		const { settings } = this.plugin;
 
-		const presentation = choosePresentation({
-			url,
-			renderMode: settings.renderMode,
-			enableEmbeds: settings.enableEmbeds,
-			domainRules: this.plugin.domainModeRules,
-			isDesktop: Platform.isDesktopApp,
-		});
 		const loadUrl = presentation.loadUrl;
 		this.isEmbed = presentation.isEmbed;
 		// deliberate media playback should be audible; arbitrary pages stay

@@ -135,6 +135,31 @@ export function clampZoom(value: number): number {
 	return Math.round(clamp(value, ZOOM_MIN, ZOOM_MAX) * 100) / 100;
 }
 
+/**
+ * Trim a content box to an embed's natural size: fixed-height cards give up
+ * the height below the card; letterboxed players give up whichever dimension
+ * the aspect ratio makes dead space. Trims at most one dimension and never
+ * grows either.
+ */
+export function fitEmbedSize(
+	content: Size,
+	hint: { height?: number; aspectRatio?: number }
+): Size {
+	if (hint.height !== undefined) {
+		return { width: content.width, height: Math.min(content.height, hint.height) };
+	}
+	if (hint.aspectRatio) {
+		const ideal = content.width / hint.aspectRatio;
+		if (content.height > ideal + 0.5) {
+			return { width: content.width, height: Math.round(ideal) };
+		}
+		if (content.height < ideal - 0.5) {
+			return { width: Math.round(content.height * hint.aspectRatio), height: content.height };
+		}
+	}
+	return content;
+}
+
 /** flyout left offset so it centers under a button, clamped to its container */
 export function flyoutLeft(
 	buttonLeft: number,

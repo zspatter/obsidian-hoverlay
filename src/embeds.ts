@@ -46,9 +46,20 @@ function youTubeEmbed(id: string, source: URL): string | null {
 	return embed.href;
 }
 
-/** the provider's embedded player URL for a media page URL, or null when the
- *  URL isn't a recognized media page */
-export function resolveEmbedUrl(raw: string): string | null {
+export interface EmbedInfo {
+	url: string;
+	/** natural content height in guest CSS px, for fixed-height embed cards */
+	height?: number;
+	/** width/height ratio, for letterboxed players */
+	aspectRatio?: number;
+}
+
+const VIDEO_ASPECT = 16 / 9;
+
+/** the provider's embedded player for a media page URL (plus its natural
+ *  sizing, so the popover can trim whitespace), or null when the URL isn't
+ *  a recognized media page */
+export function resolveEmbed(raw: string): EmbedInfo | null {
 	let url: URL;
 	try {
 		url = new URL(raw);
@@ -61,23 +72,26 @@ export function resolveEmbedUrl(raw: string): string | null {
 	const segments = url.pathname.split("/").filter(Boolean);
 
 	if (host === "youtu.be") {
-		return segments[0] ? youTubeEmbed(segments[0], url) : null;
+		const embed = segments[0] ? youTubeEmbed(segments[0], url) : null;
+		return embed ? { url: embed, aspectRatio: VIDEO_ASPECT } : null;
 	}
 
 	if (isHost(host, "youtube.com")) {
+		let embed: string | null = null;
 		if (url.pathname === "/watch") {
 			const id = url.searchParams.get("v");
-			return id ? youTubeEmbed(id, url) : null;
+			embed = id ? youTubeEmbed(id, url) : null;
+		} else if ((segments[0] === "shorts" || segments[0] === "live") && segments[1]) {
+			embed = youTubeEmbed(segments[1], url);
 		}
-		if ((segments[0] === "shorts" || segments[0] === "live") && segments[1]) {
-			return youTubeEmbed(segments[1], url);
-		}
-		return null;
+		return embed ? { url: embed, aspectRatio: VIDEO_ASPECT } : null;
 	}
 
 	if (host === "vimeo.com") {
 		const match = url.pathname.match(/^\/(\d+)$/);
-		return match ? `https://player.vimeo.com/video/${match[1]}` : null;
+		return match
+			? { url: `https://player.vimeo.com/video/${match[1]}`, aspectRatio: VIDEO_ASPECT }
+			: null;
 	}
 
 	if (host === "open.spotify.com") {
@@ -85,7 +99,11 @@ export function resolveEmbedUrl(raw: string): string | null {
 		if (parts[0]?.startsWith("intl-")) parts.shift(); // locale-prefixed paths
 		const [type, id] = parts;
 		if (type && id && SPOTIFY_TYPES.has(type)) {
-			return `https://open.spotify.com/embed/${type}/${id}`;
+			return {
+				url: `https://open.spotify.com/embed/${type}/${id}`,
+				// Spotify's documented embed card heights
+				height: type === "episode" || type === "show" ? 232 : 352,
+			};
 		}
 		return null;
 	}
@@ -93,10 +111,17 @@ export function resolveEmbedUrl(raw: string): string | null {
 	if (host === "soundcloud.com") {
 		if (segments.length >= 2 && !SOUNDCLOUD_RESERVED.has(segments[0])) {
 			const track = url.origin + url.pathname;
-			return `https://w.soundcloud.com/player/?url=${encodeURIComponent(track)}`;
+			// the visual player fills whatever box it gets: no sizing hint
+			return { url: `https://w.soundcloud.com/player/?url=${encodeURIComponent(track)}` };
 		}
 		return null;
 	}
 
 	return null;
+}
+
+/** the provider's embedded player URL for a media page URL, or null when the
+ *  URL isn't a recognized media page */
+export function resolveEmbedUrl(raw: string): string | null {
+	return resolveEmbed(raw)?.url ?? null;
 }

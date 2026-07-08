@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveEmbedUrl } from "../src/embeds";
+import { resolveEmbed, resolveEmbedUrl } from "../src/embeds";
 
 describe("resolveEmbedUrl", () => {
 	it("transforms YouTube watch URLs in all their forms", () => {
@@ -63,5 +63,38 @@ describe("resolveEmbedUrl", () => {
 		expect(resolveEmbedUrl("https://example.com/watch?v=abc")).toBeNull();
 		expect(resolveEmbedUrl("https://www.youtube.com/embed/dQw4w9WgXcQ")).toBeNull();
 		expect(resolveEmbedUrl("not a url")).toBeNull();
+	});
+});
+
+describe("resolveEmbed sizing hints", () => {
+	it("video players carry the 16:9 aspect ratio", () => {
+		expect(resolveEmbed("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toEqual({
+			url: "https://www.youtube.com/embed/dQw4w9WgXcQ",
+			aspectRatio: 16 / 9,
+		});
+		expect(resolveEmbed("https://youtu.be/dQw4w9WgXcQ")?.aspectRatio).toBe(16 / 9);
+		expect(resolveEmbed("https://vimeo.com/123456789")?.aspectRatio).toBe(16 / 9);
+	});
+
+	it("Spotify cards carry their fixed heights", () => {
+		for (const type of ["track", "album", "playlist", "artist"]) {
+			expect(resolveEmbed(`https://open.spotify.com/${type}/abc123`)).toEqual({
+				url: `https://open.spotify.com/embed/${type}/abc123`,
+				height: 352,
+			});
+		}
+		for (const type of ["episode", "show"]) {
+			expect(resolveEmbed(`https://open.spotify.com/${type}/abc123`)).toEqual({
+				url: `https://open.spotify.com/embed/${type}/abc123`,
+				height: 232,
+			});
+		}
+	});
+
+	it("SoundCloud's fluid player gets no hint", () => {
+		const info = resolveEmbed("https://soundcloud.com/artist/track-name");
+		expect(info?.url).toContain("w.soundcloud.com/player");
+		expect(info?.height).toBeUndefined();
+		expect(info?.aspectRatio).toBeUndefined();
 	});
 });

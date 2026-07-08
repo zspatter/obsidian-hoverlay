@@ -18,7 +18,7 @@ Existing hover-preview plugins render pages in an `<iframe>`. Any site that send
 - **Live page (desktop):** previews render in an Electron `<webview>`, a separate guest page doing top-level navigation. Framing headers don't apply to it, so real sites load.
 - **Reader view:** fetches the page, extracts the article with Mozilla Readability, sanitizes it, and renders just the text in your theme's typography. No scripts or trackers ever run.
 - **Metadata card:** OpenGraph/Twitter card with title, description, image and favicon, fetched through Obsidian's own request pipeline (immune to CORS, no third-party preview APIs, no keys). The automatic fallback whenever a richer mode can't render, and the default on mobile.
-- **Embedded players:** media links (YouTube, Vimeo, Spotify, SoundCloud) load the provider's embed player instead of the full page: lighter, no cookie walls, playlists and timestamps preserved.
+- **Embedded players:** media links (YouTube, Vimeo, Spotify, SoundCloud) load the provider's embed player instead of the full page: lighter, no cookie walls, playlists and timestamps preserved. The popover trims itself to the player's natural size, so there's no dead space below a Spotify card or letterboxing around a video.
 
 ![A Spotify track embedded in the popover](docs/screenshots/spotify-embed.png)
 
