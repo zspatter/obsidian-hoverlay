@@ -34,14 +34,24 @@ export async function parkPointer(selector = ".inline-title"): Promise<void> {
 	await $(selector).moveTo();
 }
 
-/** hover an element and wait for the popover (default hover delay is 400ms) */
+/** hover an element and wait for the popover (default hover delay is 400ms).
+ *  A cold session can shift layout between computing the pointer target and
+ *  the mouseover landing, so one missed hover must not fail the spec:
+ *  re-park and re-hover, like a person jiggling the mouse. */
 export async function hoverAndWaitForPopover(
 	selector: string,
 	park = ".inline-title"
 ): Promise<void> {
-	await parkPointer(park);
-	await $(selector).moveTo();
-	await $(POPOVER).waitForExist({ timeout: 8000 });
+	for (let attempt = 0; ; attempt++) {
+		await parkPointer(park);
+		await $(selector).moveTo();
+		try {
+			await $(POPOVER).waitForExist({ timeout: 4000 });
+			return;
+		} catch (err) {
+			if (attempt >= 2) throw err;
+		}
+	}
 }
 
 export async function dismissPopover(): Promise<void> {
