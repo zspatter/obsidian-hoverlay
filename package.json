@@ -6,7 +6,9 @@
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"test": "vitest run"
+		"test": "vitest run",
+		"check:e2e": "tsc --noEmit -p e2e",
+		"test:e2e": "npm run build && wdio run ./e2e/wdio.conf.mts"
 	},
 	"keywords": [],
 	"author": "zspatter",
@@ -18,13 +20,22 @@
 	"devDependencies": {
 		"@codemirror/state": "^6.4.0",
 		"@codemirror/view": "^6.26.0",
+		"@types/mocha": "^10.0.10",
 		"@types/node": "^20.14.0",
+		"@wdio/cli": "^9.29.1",
+		"@wdio/globals": "^9.29.1",
+		"@wdio/local-runner": "^9.29.1",
+		"@wdio/mocha-framework": "^9.29.1",
 		"builtin-modules": "^4.0.0",
 		"esbuild": "^0.25.0",
 		"jsdom": "^29.1.1",
+		"mocha": "^10.8.2",
 		"obsidian": "latest",
 		"tslib": "^2.6.0",
+		"tsx": "^4.23.0",
 		"typescript": "^5.5.0",
-		"vitest": "^3.0.0"
+		"vitest": "^3.0.0",
+		"wdio-obsidian-reporter": "^3.1.1",
+		"wdio-obsidian-service": "^3.1.1"
 	}
 }

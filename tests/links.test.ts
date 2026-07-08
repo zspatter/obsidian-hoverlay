@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findLinkAtOffset, normalizeUrl } from "../src/links";
+import { findLinkAtOffset, normalizeUrl, sameCanonicalUrl } from "../src/links";
 
 describe("normalizeUrl", () => {
 	it("passes through http/https URLs", () => {
@@ -41,6 +41,23 @@ describe("normalizeUrl", () => {
 		expect(normalizeUrl("other.app", inVault)).toBe("https://other.app");
 		// full URLs are never checked against the vault
 		expect(normalizeUrl("https://todo.app", () => true)).toBe("https://todo.app");
+	});
+});
+
+describe("sameCanonicalUrl", () => {
+	it("matches across browser canonicalization", () => {
+		expect(sameCanonicalUrl("https://www.example.com/", "https://www.example.com")).toBe(true);
+		expect(sameCanonicalUrl("https://Example.com:443/a", "https://example.com/a")).toBe(true);
+	});
+
+	it("distinguishes genuinely different URLs", () => {
+		expect(sameCanonicalUrl("https://example.com/a", "https://example.com/b")).toBe(false);
+		expect(sameCanonicalUrl("https://example.com/", "https://example.com/?q=1")).toBe(false);
+	});
+
+	it("falls back to string equality for non-URLs", () => {
+		expect(sameCanonicalUrl("not a url", "not a url")).toBe(true);
+		expect(sameCanonicalUrl("not a url", "other")).toBe(false);
 	});
 });
 

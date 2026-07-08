@@ -3,7 +3,7 @@ import type { Editor } from "obsidian";
 import type HoverlayPlugin from "./main";
 import { modifiersHeld, isHostBlocked, resolveZoomModifier } from "./rules";
 import type { ZoomModifier } from "./rules";
-import { normalizeUrl } from "./links";
+import { normalizeUrl, sameCanonicalUrl } from "./links";
 import { resolveLinkAt, resolveEditorCursorLink } from "./link-resolver";
 import type { ResolvedLink } from "./link-resolver";
 import { choosePresentation } from "./presentation";
@@ -428,7 +428,7 @@ export class PopoverManager {
 		// link's own URL rather than the internal player URL.
 		const handleNavigate = (nextUrl: string) => {
 			if (this.currentUrl !== url) return; // a different popover took over
-			if (nextUrl === loadUrl) return;
+			if (sameCanonicalUrl(nextUrl, loadUrl)) return; // initial load, possibly canonicalized
 			this.displayedUrl = nextUrl;
 			this.headerUrlEl?.setText(nextUrl);
 			this.headerUrlEl?.setAttribute("title", nextUrl);

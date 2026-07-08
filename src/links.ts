@@ -65,6 +65,17 @@ export function normalizeUrl(
 	return "https://" + value;
 }
 
+/** URLs equal after canonicalization: browsers normalize on load (trailing
+ *  slash, default ports, host case), so raw string comparison misreads the
+ *  initial load of a normalized link as a navigation */
+export function sameCanonicalUrl(a: string, b: string): boolean {
+	try {
+		return new URL(a).href === new URL(b).href;
+	} catch {
+		return a === b;
+	}
+}
+
 /** find a link whose text range covers the given offset within a doc line */
 export function findLinkAtOffset(text: string, offset: number): string | null {
 	for (const pattern of [MD_LINK_PATTERN, RAW_URL_PATTERN]) {

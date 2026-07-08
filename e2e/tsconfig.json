@@ -1,0 +1,15 @@
+{
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"skipLibCheck": true,
+		"types": [
+			"node",
+			"mocha",
+			"@wdio/globals/types",
+			"@wdio/mocha-framework",
+			"wdio-obsidian-service"
+		]
+	},
+	"include": ["./**/*.ts", "./wdio.conf.mts"]
+}
