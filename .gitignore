@@ -3,3 +3,5 @@ main.js
 *.js.map
 .DS_Store
 data.json
+.obsidian-cache/
+obsidian-versions-lock.txt
