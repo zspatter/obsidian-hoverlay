@@ -8,6 +8,7 @@ import {
 	hoverAndWaitForPopover,
 	previewAtCursor,
 } from "../helpers";
+import type { ObsidianWindow } from "../helpers";
 
 describe("Hoverlay smoke", function () {
 	before(async function () {
@@ -21,8 +22,7 @@ describe("Hoverlay smoke", function () {
 
 	it("loads the plugin", async function () {
 		const loaded = await browser.execute(() => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const app = (window as any).app;
+			const { app } = window as unknown as ObsidianWindow;
 			return !!app.plugins.plugins["hoverlay"];
 		});
 		expect(loaded).toBe(true);

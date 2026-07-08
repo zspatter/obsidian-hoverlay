@@ -10,7 +10,7 @@
 import { requestUrl } from "obsidian";
 import { Readability } from "@mozilla/readability";
 import { BROWSER_UA } from "../metadata";
-import { absolutizeArticleUrls, sanitizeArticleHtml } from "./article";
+import { absolutizeArticleUrls, sanitizeArticleFragment } from "./article";
 import type { RendererHandle } from "./types";
 
 export function renderReader(
@@ -59,7 +59,7 @@ export function renderReader(
 		}
 
 		const body = root.createDiv({ cls: "hoverlay-reader-body" });
-		body.innerHTML = sanitizeArticleHtml(article.content);
+		body.appendChild(sanitizeArticleFragment(article.content));
 		absolutizeArticleUrls(body, url);
 
 		// links inside the article open externally instead of navigating anything

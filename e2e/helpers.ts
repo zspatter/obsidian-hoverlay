@@ -3,6 +3,29 @@ import { browser, $ } from "@wdio/globals";
 export const POPOVER = ".hoverlay-popover";
 export const HEADER_URL = ".hoverlay-header-url";
 
+/** the slice of Obsidian's in-page surface the execute() callbacks touch,
+ *  typed structurally: types erase before the callback is serialized into
+ *  the browser, and no `any` casts (or lint waivers) are needed */
+type PluginHandle = {
+	settings: Record<string, unknown>;
+	saveSettings(): Promise<void>;
+};
+export type ObsidianWindow = {
+	app: {
+		plugins: { plugins: Record<string, PluginHandle | undefined> };
+		workspace: {
+			activeLeaf: {
+				view: {
+					editor: {
+						focus(): void;
+						setCursor(pos: { line: number; ch: number }): void;
+					};
+				};
+			};
+		};
+	};
+};
+
 /** park the real pointer on a neutral element: moveTo an element the
  *  pointer already occupies fires no mouseover, so consecutive hover tests
  *  need the pointer to actually leave and re-enter the link */
@@ -38,8 +61,8 @@ export async function dismissPopover(): Promise<void> {
 export async function previewAtCursor(line: number, ch: number): Promise<void> {
 	await browser.execute(
 		(l: number, c: number) => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const view = (window as any).app.workspace.activeLeaf.view;
+			const { app } = window as unknown as ObsidianWindow;
+			const view = app.workspace.activeLeaf.view;
 			view.editor.focus();
 			view.editor.setCursor({ line: l, ch: c });
 		},
@@ -54,8 +77,9 @@ export async function previewAtCursor(line: number, ch: number): Promise<void> {
  *  derived blocklist/domain-rule caches) */
 export async function setSettings(partial: Record<string, unknown>): Promise<void> {
 	await browser.execute((p: Record<string, unknown>) => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const plugin = (window as any).app.plugins.plugins["hoverlay"];
+		const { app } = window as unknown as ObsidianWindow;
+		const plugin = app.plugins.plugins["hoverlay"];
+		if (!plugin) throw new Error("hoverlay plugin not loaded");
 		Object.assign(plugin.settings, p);
 		return plugin.saveSettings();
 	}, partial);
@@ -63,17 +87,19 @@ export async function setSettings(partial: Record<string, unknown>): Promise<voi
 
 export async function snapshotSettings(): Promise<string> {
 	return browser.execute(() => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const plugin = (window as any).app.plugins.plugins["hoverlay"];
+		const { app } = window as unknown as ObsidianWindow;
+		const plugin = app.plugins.plugins["hoverlay"];
+		if (!plugin) throw new Error("hoverlay plugin not loaded");
 		return JSON.stringify(plugin.settings);
 	});
 }
 
 export async function restoreSettings(snapshot: string): Promise<void> {
 	await browser.execute((s: string) => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const plugin = (window as any).app.plugins.plugins["hoverlay"];
-		Object.assign(plugin.settings, JSON.parse(s));
+		const { app } = window as unknown as ObsidianWindow;
+		const plugin = app.plugins.plugins["hoverlay"];
+		if (!plugin) throw new Error("hoverlay plugin not loaded");
+		Object.assign(plugin.settings, JSON.parse(s) as Record<string, unknown>);
 		return plugin.saveSettings();
 	}, snapshot);
 }

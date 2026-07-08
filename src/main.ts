@@ -27,42 +27,42 @@ export default class HoverlayPlugin extends Plugin {
 		});
 
 		this.registerDomEvent(
-			document,
+			activeDocument,
 			"mouseover",
 			(evt: MouseEvent) => this.popovers.onMouseOver(evt),
 			{ capture: true }
 		);
-		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) =>
+		this.registerDomEvent(activeDocument, "keydown", (evt: KeyboardEvent) =>
 			this.popovers.onKeyDown(evt)
 		);
-		this.registerDomEvent(document, "keyup", (evt: KeyboardEvent) =>
+		this.registerDomEvent(activeDocument, "keyup", (evt: KeyboardEvent) =>
 			this.popovers.onKeyUp(evt)
 		);
 		this.registerDomEvent(
-			document,
+			activeDocument,
 			"mousedown",
 			(evt: MouseEvent) => this.popovers.onMouseDown(evt),
 			{ capture: true }
 		);
 		this.registerDomEvent(
-			document,
+			activeDocument,
 			"wheel",
 			(evt: WheelEvent) => this.popovers.onWheel(evt),
 			{ capture: true, passive: true }
 		);
-		this.registerDomEvent(window, "blur", () => this.popovers.onWindowBlur());
+		this.registerDomEvent(activeWindow, "blur", () => this.popovers.onWindowBlur());
 
 		// mouse back/forward buttons over the popover drive its history; both
 		// pointerup and mouseup are intercepted so Obsidian's own note
 		// navigation doesn't also fire (navigation triggers once, on pointerup)
 		this.registerDomEvent(
-			document,
+			activeDocument,
 			"pointerup",
 			(evt: PointerEvent) => this.popovers.onAuxPointer(evt, true),
 			{ capture: true }
 		);
 		this.registerDomEvent(
-			document,
+			activeDocument,
 			"mouseup",
 			(evt: MouseEvent) => this.popovers.onAuxPointer(evt, false),
 			{ capture: true }
@@ -79,7 +79,8 @@ export default class HoverlayPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const data = (await this.loadData()) as Partial<HoverlaySettings> | null;
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
 		this.refreshDerivedSettings();
 	}
 

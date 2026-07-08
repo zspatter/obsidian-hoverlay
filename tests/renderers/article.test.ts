@@ -1,10 +1,17 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { absolutizeArticleUrls, sanitizeArticleHtml } from "../../src/renderers/article";
+import { absolutizeArticleUrls, sanitizeArticleFragment } from "../../src/renderers/article";
 
 const BASE = "https://example.com/blog/post";
 
-describe("sanitizeArticleHtml", () => {
+/** the fragment serialized back to markup, for containment assertions */
+function sanitized(html: string): string {
+	const el = document.createElement("div");
+	el.appendChild(sanitizeArticleFragment(html));
+	return el.innerHTML;
+}
+
+describe("sanitizeArticleFragment", () => {
 	it("strips executable and embeddable content", () => {
 		const dirty =
 			`<p>keep me</p>` +
@@ -14,7 +21,7 @@ describe("sanitizeArticleHtml", () => {
 			`<form><input value="x"></form>` +
 			`<video src="v.mp4"></video>` +
 			`<style>body { display: none; }</style>`;
-		const clean = sanitizeArticleHtml(dirty);
+		const clean = sanitized(dirty);
 		expect(clean).toContain("keep me");
 		for (const forbidden of ["<script", "<iframe", "<object", "<form", "<input", "<video", "<style"]) {
 			expect(clean).not.toContain(forbidden);
@@ -22,7 +29,7 @@ describe("sanitizeArticleHtml", () => {
 	});
 
 	it("strips event handlers, javascript urls and inline styles", () => {
-		const clean = sanitizeArticleHtml(
+		const clean = sanitized(
 			`<a href="javascript:alert(1)" onclick="alert(2)" style="color:red">link</a>` +
 				`<img src="x.png" onerror="alert(3)" srcset="big.png 2x">`
 		);

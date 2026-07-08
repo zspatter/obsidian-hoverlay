@@ -6,6 +6,22 @@ All notable changes to Hoverlay are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-08
+
+Community plugin review pass.
+
+### Fixed
+
+- Reader mode appends sanitized article content as DOM nodes instead of
+  writing an HTML string
+- Bumped @mozilla/readability past a published security advisory
+
+### Changed
+
+- Cross-window-safe idioms throughout (activeDocument, instanceOf) as
+  groundwork for pop-out window support
+- Release assets now ship with GitHub build-provenance attestations
+
 ## [0.1.1] - 2026-07-08
 
 ### Fixed
@@ -55,6 +71,7 @@ Initial release.
   delays, per-domain preview modes and a domain blocklist
 - "Preview link under cursor" command, bindable to a hotkey
 
-[Unreleased]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.1...HEAD
+[Unreleased]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.2...HEAD
+[0.1.2]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/zspatter/obsidian-hoverlay/releases/tag/0.1.0

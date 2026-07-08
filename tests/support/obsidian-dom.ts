@@ -1,7 +1,8 @@
 /**
- * Minimal implementations of Obsidian's DOM helper prototype extensions for
- * jsdom component tests: only what the popover manager and card renderer
- * actually use. Import for side effects before constructing any component.
+ * Minimal implementations of Obsidian's DOM helper prototype extensions and
+ * window globals for jsdom component tests: only what the popover manager
+ * and card renderer actually use. Import for side effects before
+ * constructing any component.
  */
 
 interface ElInfo {
@@ -25,40 +26,53 @@ function applyInfo(el: HTMLElement, info?: ElInfo | string): void {
 	}
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-const proto = HTMLElement.prototype as any;
-
-proto.createEl = function (tag: string, info?: ElInfo | string) {
+function createEl(this: HTMLElement, tag: string, info?: ElInfo | string): HTMLElement {
 	const el = document.createElement(tag);
 	applyInfo(el, info);
 	this.appendChild(el);
 	return el;
-};
-proto.createDiv = function (info?: ElInfo | string) {
-	return this.createEl("div", info);
-};
-proto.createSpan = function (info?: ElInfo | string) {
-	return this.createEl("span", info);
-};
-proto.addClass = function (...classes: string[]) {
-	this.classList.add(...classes);
-};
-proto.removeClass = function (...classes: string[]) {
-	this.classList.remove(...classes);
-};
-proto.toggleClass = function (classes: string | string[], value: boolean) {
-	for (const cls of Array.isArray(classes) ? classes : [classes]) {
-		this.classList.toggle(cls, value);
-	}
-};
-proto.hasClass = function (cls: string) {
-	return this.classList.contains(cls);
-};
-proto.setText = function (text: string) {
-	this.textContent = text;
-};
-proto.empty = function () {
-	while (this.firstChild) this.removeChild(this.firstChild);
-};
+}
+
+Object.assign(HTMLElement.prototype, {
+	createEl,
+	createDiv(this: HTMLElement, info?: ElInfo | string) {
+		return createEl.call(this, "div", info);
+	},
+	createSpan(this: HTMLElement, info?: ElInfo | string) {
+		return createEl.call(this, "span", info);
+	},
+	addClass(this: HTMLElement, ...classes: string[]) {
+		this.classList.add(...classes);
+	},
+	removeClass(this: HTMLElement, ...classes: string[]) {
+		this.classList.remove(...classes);
+	},
+	toggleClass(this: HTMLElement, classes: string | string[], value: boolean) {
+		for (const cls of Array.isArray(classes) ? classes : [classes]) {
+			this.classList.toggle(cls, value);
+		}
+	},
+	hasClass(this: HTMLElement, cls: string) {
+		return this.classList.contains(cls);
+	},
+	setText(this: HTMLElement, text: string) {
+		this.textContent = text;
+	},
+	empty(this: HTMLElement) {
+		while (this.firstChild) this.removeChild(this.firstChild);
+	},
+});
+
+// cross-window-safe instanceof, used instead of the identity-based operator
+Object.assign(Node.prototype, {
+	instanceOf<T>(this: Node, type: new (...args: never[]) => T): boolean {
+		return this instanceof type;
+	},
+});
+
+// Obsidian's pop-out-aware globals; jsdom has a single window
+const globals = globalThis as { activeWindow?: Window; activeDocument?: Document };
+globals.activeWindow = window;
+globals.activeDocument = document;
 
 export {};

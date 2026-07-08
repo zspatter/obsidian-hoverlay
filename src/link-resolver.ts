@@ -64,8 +64,14 @@ function resolveInEditor(
 	if (!url) return null;
 
 	const token = el.closest(".cm-url, .cm-link, .cm-underline");
+	// instanceOf, not instanceof: elements from a pop-out window are built by
+	// that window's constructors, so identity checks fail across windows
 	const anchorEl =
-		token instanceof HTMLElement ? token : el instanceof HTMLElement ? el : editorEl;
+		token && token.instanceOf(HTMLElement)
+			? token
+			: el.instanceOf(HTMLElement)
+				? el
+				: editorEl;
 	return { url, anchor: anchorEl };
 }
 

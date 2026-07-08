@@ -52,7 +52,7 @@ describe("capture screenshots", function () {
 			await browser.pause(280);
 		}
 
-		const webview = await $(".hoverlay-webview");
+		const webview = await $(".hoverlay-webview").getElement();
 
 		// act 2: scroll the article inside the guest
 		for (let i = 0; i < 3; i++) {
@@ -64,7 +64,7 @@ describe("capture screenshots", function () {
 		// act 3: drag a corner to grow the popover. The southwest corner grows
 		// leftward into open note space; the southeast one would walk the
 		// pointer out of the window (move target out of bounds)
-		const corner = await $(".hoverlay-resize-sw");
+		const corner = await $(".hoverlay-resize-sw").getElement();
 		await browser
 			.action("pointer")
 			.move({ origin: corner })
@@ -77,7 +77,7 @@ describe("capture screenshots", function () {
 		await snapFrame();
 
 		// act 4: drag the header to reposition (grab left of the buttons)
-		const header = await $(".hoverlay-header");
+		const header = await $(".hoverlay-header").getElement();
 		await browser
 			.action("pointer")
 			.move({ origin: header, x: -120, y: 0 })

@@ -16,7 +16,7 @@
 	"author": "zspatter",
 	"license": "MIT",
 	"dependencies": {
-		"@mozilla/readability": "^0.5.0",
+		"@mozilla/readability": "^0.6.0",
 		"dompurify": "^3.2.3"
 	},
 	"devDependencies": {
@@ -28,7 +28,6 @@
 		"@wdio/globals": "^9.29.1",
 		"@wdio/local-runner": "^9.29.1",
 		"@wdio/mocha-framework": "^9.29.1",
-		"builtin-modules": "^4.0.0",
 		"esbuild": "^0.25.0",
 		"gifenc": "^1.0.3",
 		"jsdom": "^29.1.1",

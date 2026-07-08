@@ -5,14 +5,17 @@
  */
 import DOMPurify from "dompurify";
 
-/** strip everything executable or embeddable; the reader shows text */
-export function sanitizeArticleHtml(html: string): string {
+/** strip everything executable or embeddable; the reader shows text. Returns
+ *  a detached fragment so callers append nodes instead of writing HTML
+ *  strings into the DOM. */
+export function sanitizeArticleFragment(html: string): DocumentFragment {
 	return DOMPurify.sanitize(html, {
 		FORBID_TAGS: [
 			"iframe", "form", "input", "button", "select", "textarea",
 			"object", "embed", "video", "audio", "source", "style", "svg", "math",
 		],
 		FORBID_ATTR: ["style", "srcset", "sizes"],
+		RETURN_DOM_FRAGMENT: true,
 	});
 }
 

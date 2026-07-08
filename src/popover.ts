@@ -384,7 +384,7 @@ export class PopoverManager {
 		// the popover itself has visible overflow so the resize handles can
 		// overhang its bounds (pointer overshoot still counts as "inside");
 		// the frame provides the clipped, rounded visual box
-		const popover = document.body.createDiv({ cls: "hoverlay-popover" });
+		const popover = activeDocument.body.createDiv({ cls: "hoverlay-popover" });
 		popover.style.width = px(size.width);
 		popover.style.height = px(size.height);
 		this.popoverEl = popover;

@@ -37,7 +37,7 @@ interface ElectronWebview extends HTMLElement {
 /** guest scrollbar theming, with the vault's scrollbar variables resolved
  *  at render time so theme switches apply to the next preview */
 function themedScrollbarCss(): string {
-	const style = getComputedStyle(document.body);
+	const style = getComputedStyle(activeDocument.body);
 	const read = (name: string, fallback: string) =>
 		style.getPropertyValue(name).trim() || fallback;
 	const thumb = read("--scrollbar-thumb-bg", "rgba(0, 0, 0, 0.2)");
@@ -66,7 +66,7 @@ export function renderWebview(
 ): RendererHandle {
 	const { zoom, muted, volume, onFail, onNavigate, onMediaPlaying } = options;
 	const frame = container.createDiv({ cls: "hoverlay-webview-frame" });
-	const webview = document.createElement("webview") as ElectronWebview;
+	const webview = activeDocument.createElement("webview") as ElectronWebview;
 	webview.setAttribute("src", url);
 	webview.classList.add("hoverlay-webview");
 
@@ -177,9 +177,9 @@ export function renderWebview(
 	return {
 		dispose: () => {
 			loading.remove();
-			const fullscreenEl = document.fullscreenElement;
+			const fullscreenEl = activeDocument.fullscreenElement;
 			if (guestFullscreen || (fullscreenEl && frame.contains(fullscreenEl))) {
-				void document.exitFullscreen().catch(() => {});
+				void activeDocument.exitFullscreen().catch(() => {});
 			}
 			try {
 				webview.stop();

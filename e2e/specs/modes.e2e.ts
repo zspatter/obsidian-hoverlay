@@ -1,5 +1,5 @@
 import { before, beforeEach, describe, it } from "mocha";
-import { browser, expect, $ } from "@wdio/globals";
+import { expect, $ } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
 import {
 	HEADER_URL,
