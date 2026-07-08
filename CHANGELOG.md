@@ -6,7 +6,7 @@ All notable changes to Hoverlay are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0]
+## [0.1.0] - 2026-07-08
 
 Initial release.
 
