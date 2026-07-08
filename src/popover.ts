@@ -1,47 +1,62 @@
 import { Platform, setIcon } from "obsidian";
 import type { Editor } from "obsidian";
-import { EditorView } from "@codemirror/view";
 import type HoverlayPlugin from "./main";
 import { modifiersHeld, isHostBlocked, resolveZoomModifier } from "./rules";
 import type { ZoomModifier } from "./rules";
-import { normalizeUrl, findLinkAtOffset } from "./links";
+import { normalizeUrl } from "./links";
+import { resolveLinkAt, resolveEditorCursorLink } from "./link-resolver";
+import type { ResolvedLink } from "./link-resolver";
 import { choosePresentation } from "./presentation";
+import {
+	RESIZE_HANDLES,
+	ZOOM_STEP,
+	clampZoom,
+	dragPosition,
+	flyoutLeft,
+	maximizedRect,
+	popoverPosition,
+	resizeRect,
+} from "./geometry";
+import type { EdgeSet, Size } from "./geometry";
 import { renderWebview } from "./renderers/webview";
 import { renderCard } from "./renderers/card";
 import { renderReader } from "./renderers/reader";
 import type { RendererHandle } from "./renderers/types";
 
-const MIN_WIDTH = 260;
-const MIN_HEIGHT = 180;
-const ZOOM_MIN = 0.25;
-const ZOOM_MAX = 1.5;
-const ZOOM_STEP = 0.05;
-const VIEWPORT_MARGIN = 8;
-const MAXIMIZE_MARGIN = 24;
 /** hover dismissal grace after restoring from maximize, so the popover
  *  doesn't instantly close when the cursor lands outside the restored rect */
 const RESTORE_HOVER_SUSPEND_MS = 1500;
+/** re-resolving the same hovered element within this window reuses the last
+ *  result (editor scans force layout reads on every mouseover otherwise) */
+const RESOLVE_CACHE_MS = 250;
 
-interface ResizeEdges {
-	left?: boolean;
-	right?: boolean;
-	top?: boolean;
-	bottom?: boolean;
+const px = (value: number) => `${value}px`;
+
+const viewportSize = (): Size => ({ width: window.innerWidth, height: window.innerHeight });
+
+function iconButton(
+	parent: HTMLElement,
+	icon: string,
+	label: string,
+	onClick: () => void
+): HTMLElement {
+	const button = parent.createDiv({
+		cls: "clickable-icon hoverlay-header-btn",
+		attr: { "aria-label": label, title: label },
+	});
+	setIcon(button, icon);
+	button.addEventListener("click", (evt) => {
+		evt.stopPropagation();
+		onClick();
+	});
+	return button;
 }
 
-const RESIZE_HANDLES: Array<{ cls: string; edges: ResizeEdges }> = [
-	{ cls: "e", edges: { right: true } },
-	{ cls: "w", edges: { left: true } },
-	{ cls: "s", edges: { bottom: true } },
-	{ cls: "n", edges: { top: true } },
-	{ cls: "se", edges: { right: true, bottom: true } },
-	{ cls: "sw", edges: { left: true, bottom: true } },
-	{ cls: "ne", edges: { right: true, top: true } },
-	{ cls: "nw", edges: { left: true, top: true } },
-];
-
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-const px = (value: number) => `${value}px`;
+function setButtonState(button: HTMLElement, icon: string, label: string): void {
+	setIcon(button, icon);
+	button.setAttribute("aria-label", label);
+	button.setAttribute("title", label);
+}
 
 interface PendingHover {
 	url: string;
@@ -51,8 +66,10 @@ interface PendingHover {
 }
 
 /**
- * Owns the single popover instance: hover detection, debounce, positioning,
- * renderer selection (webview vs card), resizing, zoom and teardown.
+ * Owns the single popover instance: hover intake, show/hide lifecycle and
+ * the wiring between header controls, renderers and settings. Decisions
+ * live in the pure modules (links, rules, presentation, geometry); this
+ * class reads DOM state, calls them and applies the results.
  */
 export class PopoverManager {
 	private plugin: HoverlayPlugin;
@@ -86,11 +103,9 @@ export class PopoverManager {
 	private pinBtnEl: HTMLElement | null = null;
 	private pinned = false;
 	private heldKeys = new Set<string>();
-	// hover resolution runs on every mouseover in the app; skip re-resolving
-	// the same element in quick succession (editor scans force layout reads)
 	private lastResolveEl: Element | null = null;
 	private lastResolveTime = 0;
-	private lastResolveResult: { url: string; anchor: HTMLElement } | null = null;
+	private lastResolveResult: ResolvedLink | null = null;
 
 	constructor(plugin: HoverlayPlugin) {
 		this.plugin = plugin;
@@ -109,16 +124,7 @@ export class PopoverManager {
 			return;
 		}
 
-		const now = performance.now();
-		let link: { url: string; anchor: HTMLElement } | null;
-		if (target === this.lastResolveEl && now - this.lastResolveTime < 250) {
-			link = this.lastResolveResult;
-		} else {
-			link = this.resolveLink(target, evt);
-			this.lastResolveEl = target;
-			this.lastResolveTime = now;
-			this.lastResolveResult = link;
-		}
+		const link = this.resolveLinkCached(target, evt);
 
 		if (!link) {
 			// pointer wandered off any link; in hover mode let the popover wind down
@@ -137,63 +143,9 @@ export class PopoverManager {
 		}
 		// same link already counting down: let the timer run instead of restarting it
 		if (this.pending && this.pending.url === url) return;
-
-		try {
-			const host = new URL(url).hostname;
-			if (isHostBlocked(host, this.plugin.blockedHosts)) return;
-		} catch {
-			return; // unparseable even after normalization
-		}
+		if (this.isBlocked(url)) return;
 
 		this.scheduleShow(url, anchor);
-	}
-
-	// ---- command entry point: preview the link under the editor cursor ----
-
-	hasLinkAtEditorCursor(editor: Editor): boolean {
-		return this.resolveAtEditorCursor(editor) !== null;
-	}
-
-	openAtEditorCursor(editor: Editor): boolean {
-		const resolved = this.resolveAtEditorCursor(editor);
-		if (!resolved) return false;
-		this.cancelShow();
-		this.show(resolved.url, resolved.rect);
-		return true;
-	}
-
-	private resolveAtEditorCursor(editor: Editor): { url: string; rect: DOMRect } | null {
-		const cursor = editor.getCursor();
-		const raw = findLinkAtOffset(editor.getLine(cursor.line), cursor.ch);
-		if (!raw) return null;
-
-		const url = this.normalize(raw);
-		if (!url) return null;
-		try {
-			if (isHostBlocked(new URL(url).hostname, this.plugin.blockedHosts)) return null;
-		} catch {
-			return null;
-		}
-
-		// anchor the popover at the cursor's screen position
-		let rect = new DOMRect(window.innerWidth / 2, window.innerHeight / 3, 0, 0);
-		const view = (editor as unknown as { cm?: EditorView }).cm;
-		if (view) {
-			const pos = Math.min(
-				view.state.doc.line(cursor.line + 1).from + cursor.ch,
-				view.state.doc.length
-			);
-			const coords = view.coordsAtPos(pos);
-			if (coords) {
-				rect = new DOMRect(
-					coords.left,
-					coords.top,
-					coords.right - coords.left,
-					coords.bottom - coords.top
-				);
-			}
-		}
-		return { url, rect };
 	}
 
 	onKeyDown(evt: KeyboardEvent): void {
@@ -264,58 +216,38 @@ export class PopoverManager {
 		this.hide();
 	}
 
-	// ---- link resolution ----
+	// ---- command entry point: preview the link under the editor cursor ----
 
-	/**
-	 * Extract an external URL from the hovered element, covering all three
-	 * view modes:
-	 *
-	 * - Reading mode renders real anchors; read the raw href attribute rather
-	 *   than anchor.href, because scheme-less links like [site](www.foo.com)
-	 *   resolve against the app origin ("app://obsidian.md/www.foo.com").
-	 *   Anchors marked internal-link belong to core Page Preview and are
-	 *   never touched.
-	 * - Source mode and live preview are CodeMirror: posAtCoords maps the
-	 *   mouse position to a document offset and the containing line is
-	 *   scanned for a link covering it. This handles live preview's folded
-	 *   [text](url) links (the URL never exists in the DOM) and plain
-	 *   untokenized text alike.
-	 */
-	private resolveLink(el: Element, evt: MouseEvent): { url: string; anchor: HTMLElement } | null {
-		const anchor = el.closest("a");
-		if (anchor instanceof HTMLAnchorElement) {
-			if (anchor.classList.contains("internal-link")) return null;
-			const url = this.normalize(anchor.getAttribute("href") ?? "");
-			return url ? { url, anchor } : null;
-		}
-
-		return this.resolveLinkInEditor(el, evt);
+	hasLinkAtEditorCursor(editor: Editor): boolean {
+		return this.resolveAtEditorCursor(editor) !== null;
 	}
 
-	private resolveLinkInEditor(
-		el: Element,
-		evt: MouseEvent
-	): { url: string; anchor: HTMLElement } | null {
-		const editorEl = el.closest(".cm-editor");
-		if (!(editorEl instanceof HTMLElement)) return null;
+	openAtEditorCursor(editor: Editor): boolean {
+		const resolved = this.resolveAtEditorCursor(editor);
+		if (!resolved) return false;
+		this.cancelShow();
+		this.show(resolved.url, resolved.rect);
+		return true;
+	}
 
-		const view = EditorView.findFromDOM(editorEl);
-		if (!view) return null;
+	private resolveAtEditorCursor(editor: Editor): { url: string; rect: DOMRect } | null {
+		const resolved = resolveEditorCursorLink(editor, (raw) => this.normalize(raw));
+		if (!resolved || this.isBlocked(resolved.url)) return null;
+		return resolved;
+	}
 
-		const pos = view.posAtCoords({ x: evt.clientX, y: evt.clientY });
-		if (pos === null) return null;
+	// ---- link resolution ----
 
-		const line = view.state.doc.lineAt(pos);
-		const rawLink = findLinkAtOffset(line.text, pos - line.from);
-		if (!rawLink) return null;
-
-		const url = this.normalize(rawLink);
-		if (!url) return null;
-
-		const token = el.closest(".cm-url, .cm-link, .cm-underline");
-		const anchorEl =
-			token instanceof HTMLElement ? token : el instanceof HTMLElement ? el : editorEl;
-		return { url, anchor: anchorEl };
+	private resolveLinkCached(target: Element, evt: MouseEvent): ResolvedLink | null {
+		const now = performance.now();
+		if (target === this.lastResolveEl && now - this.lastResolveTime < RESOLVE_CACHE_MS) {
+			return this.lastResolveResult;
+		}
+		const link = resolveLinkAt(target, evt, (raw) => this.normalize(raw));
+		this.lastResolveEl = target;
+		this.lastResolveTime = now;
+		this.lastResolveResult = link;
+		return link;
 	}
 
 	private normalize(raw: string): string | null {
@@ -330,6 +262,14 @@ export class PopoverManager {
 			return this.plugin.app.metadataCache.getFirstLinkpathDest(decoded, "") !== null;
 		} catch {
 			return false;
+		}
+	}
+
+	private isBlocked(url: string): boolean {
+		try {
+			return isHostBlocked(new URL(url).hostname, this.plugin.blockedHosts);
+		} catch {
+			return true; // unparseable even after normalization
 		}
 	}
 
@@ -384,6 +324,19 @@ export class PopoverManager {
 		this.currentUrl = url;
 		this.displayedUrl = url;
 
+		const popover = this.buildShell(url);
+		this.placePopover(popover, anchor);
+		this.addResizeHandles(popover);
+		this.attachZoomWheel(popover);
+		this.attachHoverDismissal(popover, anchor);
+		this.mountRenderer(url);
+
+		// zoom key may already be held down when the popover opens
+		if (this.zoomKeyHeld()) this.addZoomShield();
+	}
+
+	/** popover, frame, header and content elements, at the configured size */
+	private buildShell(url: string): HTMLElement {
 		const { settings } = this.plugin;
 
 		// the popover itself has visible overflow so the resize handles can
@@ -397,16 +350,25 @@ export class PopoverManager {
 		const frame = popover.createDiv({ cls: "hoverlay-frame" });
 		this.frameEl = frame;
 		this.buildHeader(frame, url);
-		const content = frame.createDiv({ cls: "hoverlay-content" });
-		this.contentEl = content;
+		this.contentEl = frame.createDiv({ cls: "hoverlay-content" });
+		return popover;
+	}
 
-		const anchorRect =
-			anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
-		this.position(popover, anchorRect);
-		this.addResizeHandles(popover);
+	private placePopover(popover: HTMLElement, anchor: HTMLElement | DOMRect): void {
+		const rect = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
+		const { settings } = this.plugin;
+		const pos = popoverPosition(
+			{ left: rect.left, top: rect.top, bottom: rect.bottom },
+			{ width: settings.popoverWidth, height: settings.popoverHeight },
+			viewportSize()
+		);
+		popover.style.left = px(pos.left);
+		popover.style.top = px(pos.top);
+	}
 
-		// zoom for the areas the host still sees directly (header, card mode);
-		// the webview surface itself needs the shield (see onKeyDown)
+	/** zoom for the areas the host still sees directly (header, card mode);
+	 *  the webview surface itself needs the shield (see onKeyDown) */
+	private attachZoomWheel(popover: HTMLElement): void {
 		popover.addEventListener(
 			"wheel",
 			(evt: WheelEvent) => {
@@ -417,28 +379,27 @@ export class PopoverManager {
 			},
 			{ passive: false }
 		);
+	}
 
-		if (settings.stickyMode === "hover") {
-			popover.addEventListener("mouseenter", () => {
-				this.cancelHide();
-				this.suspendHoverUntil = 0;
-			});
-			popover.addEventListener("mouseleave", () => this.scheduleHide());
-			if (anchor instanceof HTMLElement) {
-				anchor.addEventListener("mouseleave", () => this.scheduleHide(), { once: true });
-			}
+	private attachHoverDismissal(popover: HTMLElement, anchor: HTMLElement | DOMRect): void {
+		if (this.plugin.settings.stickyMode !== "hover") return;
+		popover.addEventListener("mouseenter", () => {
+			this.cancelHide();
+			this.suspendHoverUntil = 0;
+		});
+		popover.addEventListener("mouseleave", () => this.scheduleHide());
+		if (anchor instanceof HTMLElement) {
+			anchor.addEventListener("mouseleave", () => this.scheduleHide(), { once: true });
 		}
+	}
 
-		// any renderer that can't show the page falls back to the metadata card
-		const fallBackToCard = () => {
-			if (this.currentUrl !== url || !this.contentEl) return;
-			this.renderer?.dispose();
-			this.renderer = renderCard(this.contentEl, url);
-			this.updateNavState();
-			this.updateMuteButton();
-		};
+	/** renderer selection (via the pure presentation module), fallback and
+	 *  navigation wiring */
+	private mountRenderer(url: string): void {
+		const content = this.contentEl;
+		if (!content) return;
+		const { settings } = this.plugin;
 
-		// mode/override/embed resolution lives in the pure presentation module
 		const presentation = choosePresentation({
 			url,
 			renderMode: settings.renderMode,
@@ -452,6 +413,15 @@ export class PopoverManager {
 		// muted so hover previews never blare autoplay noise
 		this.muted = !this.isEmbed;
 		this.audioActive = false;
+
+		// any renderer that can't show the page falls back to the metadata card
+		const fallBackToCard = () => {
+			if (this.currentUrl !== url || !this.contentEl) return;
+			this.renderer?.dispose();
+			this.renderer = renderCard(this.contentEl, url);
+			this.updateNavState();
+			this.updateMuteButton();
+		};
 
 		// in-preview navigation: live-update the URL readout and history buttons.
 		// The initial load is skipped so an embedded player keeps showing the
@@ -485,9 +455,82 @@ export class PopoverManager {
 		}
 		this.updateNavState();
 		this.updateMuteButton();
+	}
 
-		// zoom key may already be held down when the popover opens
-		if (this.zoomKeyHeld()) this.addZoomShield();
+	// ---- header bar ----
+
+	private buildHeader(parent: HTMLElement, url: string): void {
+		const header = parent.createDiv({ cls: "hoverlay-header" });
+
+		this.buildNavButtons(header);
+
+		this.headerUrlEl = header.createDiv({
+			cls: "hoverlay-header-url",
+			text: url,
+			attr: { title: url },
+		});
+
+		this.buildActionButtons(header, parent, url);
+		this.makeHeaderDraggable(header);
+	}
+
+	/** history buttons; hidden until a renderer with navigation is active */
+	private buildNavButtons(header: HTMLElement): void {
+		const nav = header.createDiv({ cls: "hoverlay-header-nav is-hidden" });
+		this.navEl = nav;
+		this.navBackEl = iconButton(nav, "arrow-left", "Back", () =>
+			this.renderer?.navigation?.back()
+		);
+		this.navForwardEl = iconButton(nav, "arrow-right", "Forward", () =>
+			this.renderer?.navigation?.forward()
+		);
+	}
+
+	private buildActionButtons(header: HTMLElement, frame: HTMLElement, url: string): void {
+		const actions = header.createDiv({ cls: "hoverlay-header-actions" });
+
+		// transient zoom readout; appears on zoom changes, click resets to 100%
+		this.zoomBadgeEl = actions.createDiv({
+			cls: "hoverlay-zoom-badge",
+			attr: { title: "Reset zoom to 100%", "aria-label": "Reset zoom to 100%" },
+		});
+		this.zoomBadgeEl.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.setZoomTo(1);
+		});
+
+		// per-popover pin: hover dismissal off until unpinned, Escape/X/click
+		// outside still close. Redundant when the global mode is already sticky.
+		if (this.plugin.settings.stickyMode === "hover") {
+			this.pinBtnEl = iconButton(
+				actions,
+				"pin",
+				"Pin (stay open until Escape or a click elsewhere)",
+				() => this.togglePin()
+			);
+		}
+
+		// mute toggle; hidden until audio is relevant (see updateMuteButton)
+		this.muteBtnEl = iconButton(actions, "volume-x", "Unmute", () => this.toggleMute());
+		this.muteBtnEl.addClass("is-hidden");
+		this.buildVolumeFlyout(frame, this.muteBtnEl);
+
+		const maximizeBtn = iconButton(actions, "maximize-2", "Maximize", () => {
+			this.toggleMaximize();
+			setButtonState(
+				maximizeBtn,
+				this.maximized ? "minimize-2" : "maximize-2",
+				this.maximized ? "Restore size" : "Maximize"
+			);
+		});
+
+		iconButton(actions, "external-link", "Open in browser", () => {
+			// after in-preview navigation, open the page being looked at now
+			window.open(this.displayedUrl ?? url);
+			this.hide();
+		});
+
+		iconButton(actions, "x", "Close", () => this.hide());
 	}
 
 	/** volume slider flyout, shown while hovering the speaker button or the
@@ -546,10 +589,14 @@ export class PopoverManager {
 			// header buttons come and go, so compute at show time
 			const frameRect = frame.getBoundingClientRect();
 			const buttonRect = muteBtn.getBoundingClientRect();
-			const left =
-				buttonRect.left - frameRect.left + buttonRect.width / 2 - flyout.offsetWidth / 2;
-			const maxLeft = frame.clientWidth - flyout.offsetWidth - 4;
-			flyout.style.left = `${Math.max(4, Math.min(maxLeft, left))}px`;
+			flyout.style.left = px(
+				flyoutLeft(
+					buttonRect.left - frameRect.left,
+					buttonRect.width,
+					flyout.offsetWidth,
+					frame.clientWidth
+				)
+			);
 		};
 		const scheduleFlyoutHide = () => {
 			if (this.volumeFlyoutTimer !== null) window.clearTimeout(this.volumeFlyoutTimer);
@@ -565,18 +612,71 @@ export class PopoverManager {
 		flyout.addEventListener("mouseleave", scheduleFlyoutHide);
 	}
 
+	/** drag the header to reposition the popover; per-popup only, nothing persists */
+	private makeHeaderDraggable(header: HTMLElement): void {
+		header.addEventListener("pointerdown", (evt: PointerEvent) => {
+			const popover = this.popoverEl;
+			const frame = this.frameEl;
+			if (!popover || !frame || this.maximized || evt.button !== 0) return;
+			if (
+				evt.target instanceof Element &&
+				evt.target.closest(".hoverlay-header-btn, .hoverlay-zoom-badge")
+			) {
+				return;
+			}
+			evt.preventDefault();
+
+			this.dragging = true; // suspends hover dismissal for the whole drag
+			this.cancelHide();
+			header.addClass("is-dragging");
+
+			const grabOffset = {
+				x: evt.clientX - popover.offsetLeft,
+				y: evt.clientY - popover.offsetTop,
+			};
+			// transparent shield so the webview doesn't swallow pointermove mid-drag
+			const shield = frame.createDiv({ cls: "hoverlay-shield" });
+			header.setPointerCapture(evt.pointerId);
+
+			const onMove = (move: PointerEvent) => {
+				const pos = dragPosition(
+					{ x: move.clientX, y: move.clientY },
+					grabOffset,
+					{ width: popover.offsetWidth, height: popover.offsetHeight },
+					viewportSize()
+				);
+				popover.style.left = px(pos.left);
+				popover.style.top = px(pos.top);
+			};
+
+			const onUp = () => {
+				header.removeEventListener("pointermove", onMove);
+				header.removeEventListener("pointerup", onUp);
+				shield.remove();
+				header.removeClass("is-dragging");
+				this.dragging = false;
+			};
+
+			header.addEventListener("pointermove", onMove);
+			header.addEventListener("pointerup", onUp);
+		});
+	}
+
+	// ---- header controls ----
+
 	private togglePin(): void {
 		this.pinned = !this.pinned;
 		if (this.pinned) this.cancelHide();
 		const button = this.pinBtnEl;
 		if (!button) return;
-		setIcon(button, this.pinned ? "pin-off" : "pin");
 		button.toggleClass("is-active", this.pinned);
-		const label = this.pinned
-			? "Unpin (resume closing when the pointer leaves)"
-			: "Pin (stay open until Escape or a click elsewhere)";
-		button.setAttribute("aria-label", label);
-		button.setAttribute("title", label);
+		setButtonState(
+			button,
+			this.pinned ? "pin-off" : "pin",
+			this.pinned
+				? "Unpin (resume closing when the pointer leaves)"
+				: "Pin (stay open until Escape or a click elsewhere)"
+		);
 	}
 
 	private toggleMute(): void {
@@ -598,10 +698,7 @@ export class PopoverManager {
 			: this.plugin.settings.mediaVolume < 0.5
 				? "volume-1"
 				: "volume-2";
-		setIcon(button, icon);
-		const label = this.muted ? "Unmute" : "Mute";
-		button.setAttribute("aria-label", label);
-		button.setAttribute("title", label);
+		setButtonState(button, icon, this.muted ? "Unmute" : "Mute");
 	}
 
 	/** show the history buttons only for renderers that have a history, and
@@ -612,142 +709,6 @@ export class PopoverManager {
 		if (!nav) return;
 		this.navBackEl?.toggleClass("is-disabled", !nav.canGoBack());
 		this.navForwardEl?.toggleClass("is-disabled", !nav.canGoForward());
-	}
-
-	// ---- header bar ----
-
-	private buildHeader(parent: HTMLElement, url: string): void {
-		const header = parent.createDiv({ cls: "hoverlay-header" });
-
-		const iconButton = (
-			buttonParent: HTMLElement,
-			icon: string,
-			label: string,
-			onClick: () => void
-		): HTMLElement => {
-			const button = buttonParent.createDiv({
-				cls: "clickable-icon hoverlay-header-btn",
-				attr: { "aria-label": label, title: label },
-			});
-			setIcon(button, icon);
-			button.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				onClick();
-			});
-			return button;
-		};
-
-		// history buttons; hidden until a renderer with navigation is active
-		const nav = header.createDiv({ cls: "hoverlay-header-nav is-hidden" });
-		this.navEl = nav;
-		this.navBackEl = iconButton(nav, "arrow-left", "Back", () =>
-			this.renderer?.navigation?.back()
-		);
-		this.navForwardEl = iconButton(nav, "arrow-right", "Forward", () =>
-			this.renderer?.navigation?.forward()
-		);
-
-		this.headerUrlEl = header.createDiv({
-			cls: "hoverlay-header-url",
-			text: url,
-			attr: { title: url },
-		});
-
-		const actions = header.createDiv({ cls: "hoverlay-header-actions" });
-
-		// transient zoom readout; appears on zoom changes, click resets to 100%
-		this.zoomBadgeEl = actions.createDiv({
-			cls: "hoverlay-zoom-badge",
-			attr: { title: "Reset zoom to 100%", "aria-label": "Reset zoom to 100%" },
-		});
-		this.zoomBadgeEl.addEventListener("click", (evt) => {
-			evt.stopPropagation();
-			this.setZoomTo(1);
-		});
-
-		const addAction = (icon: string, label: string, onClick: () => void): HTMLElement =>
-			iconButton(actions, icon, label, onClick);
-
-		// per-popover pin: hover dismissal off until unpinned, Escape/X/click
-		// outside still close. Redundant when the global mode is already sticky.
-		if (this.plugin.settings.stickyMode === "hover") {
-			this.pinBtnEl = addAction("pin", "Pin (stay open until Escape or a click elsewhere)", () =>
-				this.togglePin()
-			);
-		}
-
-		// mute toggle; hidden until audio is relevant (see updateMuteButton)
-		this.muteBtnEl = addAction("volume-x", "Unmute", () => this.toggleMute());
-		this.muteBtnEl.addClass("is-hidden");
-		this.buildVolumeFlyout(parent, this.muteBtnEl);
-
-		const maximizeBtn = addAction("maximize-2", "Maximize", () => {
-			this.toggleMaximize();
-			setIcon(maximizeBtn, this.maximized ? "minimize-2" : "maximize-2");
-			const label = this.maximized ? "Restore size" : "Maximize";
-			maximizeBtn.setAttribute("aria-label", label);
-			maximizeBtn.setAttribute("title", label);
-		});
-
-		addAction("external-link", "Open in browser", () => {
-			// after in-preview navigation, open the page being looked at now
-			window.open(this.displayedUrl ?? url);
-			this.hide();
-		});
-
-		addAction("x", "Close", () => this.hide());
-
-		this.makeHeaderDraggable(header);
-	}
-
-	/** drag the header to reposition the popover; per-popup only, nothing persists */
-	private makeHeaderDraggable(header: HTMLElement): void {
-		header.addEventListener("pointerdown", (evt: PointerEvent) => {
-			const popover = this.popoverEl;
-			const frame = this.frameEl;
-			if (!popover || !frame || this.maximized || evt.button !== 0) return;
-			if (
-				evt.target instanceof Element &&
-				evt.target.closest(".hoverlay-header-btn, .hoverlay-zoom-badge")
-			) {
-				return;
-			}
-			evt.preventDefault();
-
-			this.dragging = true; // suspends hover dismissal for the whole drag
-			this.cancelHide();
-			header.addClass("is-dragging");
-
-			const offsetX = evt.clientX - popover.offsetLeft;
-			const offsetY = evt.clientY - popover.offsetTop;
-			// transparent shield so the webview doesn't swallow pointermove mid-drag
-			const shield = frame.createDiv({ cls: "hoverlay-shield" });
-			header.setPointerCapture(evt.pointerId);
-
-			const onMove = (move: PointerEvent) => {
-				const maxLeft = Math.max(
-					VIEWPORT_MARGIN,
-					window.innerWidth - popover.offsetWidth - VIEWPORT_MARGIN
-				);
-				const maxTop = Math.max(
-					VIEWPORT_MARGIN,
-					window.innerHeight - popover.offsetHeight - VIEWPORT_MARGIN
-				);
-				popover.style.left = px(clamp(move.clientX - offsetX, VIEWPORT_MARGIN, maxLeft));
-				popover.style.top = px(clamp(move.clientY - offsetY, VIEWPORT_MARGIN, maxTop));
-			};
-
-			const onUp = () => {
-				header.removeEventListener("pointermove", onMove);
-				header.removeEventListener("pointerup", onUp);
-				shield.remove();
-				header.removeClass("is-dragging");
-				this.dragging = false;
-			};
-
-			header.addEventListener("pointermove", onMove);
-			header.addEventListener("pointerup", onUp);
-		});
 	}
 
 	private toggleMaximize(): void {
@@ -761,10 +722,11 @@ export class PopoverManager {
 				width: popover.style.width,
 				height: popover.style.height,
 			};
-			popover.style.left = px(MAXIMIZE_MARGIN);
-			popover.style.top = px(MAXIMIZE_MARGIN);
-			popover.style.width = px(window.innerWidth - MAXIMIZE_MARGIN * 2);
-			popover.style.height = px(window.innerHeight - MAXIMIZE_MARGIN * 2);
+			const rect = maximizedRect(viewportSize());
+			popover.style.left = px(rect.left);
+			popover.style.top = px(rect.top);
+			popover.style.width = px(rect.width);
+			popover.style.height = px(rect.height);
 			this.maximized = true;
 			this.cancelHide(); // maximized previews dismiss via Escape, X, or restore
 		} else {
@@ -857,7 +819,7 @@ export class PopoverManager {
 	private setZoomTo(value: number): void {
 		if (!this.renderer?.setZoom) return; // current renderer doesn't zoom
 		const { settings } = this.plugin;
-		const zoom = Math.round(clamp(value, ZOOM_MIN, ZOOM_MAX) * 100) / 100;
+		const zoom = clampZoom(value);
 		if (zoom !== settings.webviewZoom) {
 			settings.webviewZoom = zoom;
 			void this.plugin.saveSettings();
@@ -878,24 +840,7 @@ export class PopoverManager {
 		}, 1600);
 	}
 
-	// ---- positioning / resizing ----
-
-	private position(popover: HTMLElement, rect: DOMRect): void {
-		const { settings } = this.plugin;
-
-		let left = rect.left;
-		let top = rect.bottom + VIEWPORT_MARGIN;
-
-		if (left + settings.popoverWidth > window.innerWidth - VIEWPORT_MARGIN) {
-			left = window.innerWidth - settings.popoverWidth - VIEWPORT_MARGIN;
-		}
-		if (top + settings.popoverHeight > window.innerHeight - VIEWPORT_MARGIN) {
-			top = rect.top - settings.popoverHeight - VIEWPORT_MARGIN; // flip above the link
-		}
-
-		popover.style.left = px(Math.max(VIEWPORT_MARGIN, left));
-		popover.style.top = px(Math.max(VIEWPORT_MARGIN, top));
-	}
+	// ---- resizing ----
 
 	private addResizeHandles(popover: HTMLElement): void {
 		for (const { cls, edges } of RESIZE_HANDLES) {
@@ -921,7 +866,7 @@ export class PopoverManager {
 	private startResize(
 		evt: PointerEvent,
 		handle: HTMLElement,
-		edges: ResizeEdges,
+		edges: EdgeSet,
 		setHighlight: (on: boolean) => void
 	): void {
 		const popover = this.popoverEl;
@@ -935,42 +880,29 @@ export class PopoverManager {
 		this.cancelHide();
 		setHighlight(true);
 
-		const startX = evt.clientX;
-		const startY = evt.clientY;
-		const startWidth = popover.offsetWidth;
-		const startHeight = popover.offsetHeight;
-		const startLeft = popover.offsetLeft;
-		const startTop = popover.offsetTop;
+		const startPointer = { x: evt.clientX, y: evt.clientY };
+		const startRect = {
+			left: popover.offsetLeft,
+			top: popover.offsetTop,
+			width: popover.offsetWidth,
+			height: popover.offsetHeight,
+		};
 
 		// transparent shield so the webview doesn't swallow pointermove mid-drag
 		const shield = frame.createDiv({ cls: "hoverlay-shield" });
 		handle.setPointerCapture(evt.pointerId);
 
 		const onMove = (move: PointerEvent) => {
-			const dx = move.clientX - startX;
-			const dy = move.clientY - startY;
-
-			if (edges.right) {
-				const maxWidth = window.innerWidth - startLeft - VIEWPORT_MARGIN;
-				popover.style.width = px(clamp(startWidth + dx, MIN_WIDTH, maxWidth));
-			}
-			if (edges.bottom) {
-				const maxHeight = window.innerHeight - startTop - VIEWPORT_MARGIN;
-				popover.style.height = px(clamp(startHeight + dy, MIN_HEIGHT, maxHeight));
-			}
-			if (edges.left) {
-				// left edge moves the origin as well as the size
-				const maxWidth = startLeft + startWidth - VIEWPORT_MARGIN;
-				const width = clamp(startWidth - dx, MIN_WIDTH, maxWidth);
-				popover.style.width = px(width);
-				popover.style.left = px(startLeft + startWidth - width);
-			}
-			if (edges.top) {
-				const maxHeight = startTop + startHeight - VIEWPORT_MARGIN;
-				const height = clamp(startHeight - dy, MIN_HEIGHT, maxHeight);
-				popover.style.height = px(height);
-				popover.style.top = px(startTop + startHeight - height);
-			}
+			const next = resizeRect(
+				edges,
+				startRect,
+				{ x: move.clientX - startPointer.x, y: move.clientY - startPointer.y },
+				viewportSize()
+			);
+			popover.style.left = px(next.left);
+			popover.style.top = px(next.top);
+			popover.style.width = px(next.width);
+			popover.style.height = px(next.height);
 		};
 
 		const onUp = () => {
@@ -1020,7 +952,10 @@ export class PopoverManager {
 			window.clearTimeout(this.zoomBadgeTimer);
 			this.zoomBadgeTimer = null;
 		}
-		this.zoomBadgeEl = null;
+		if (this.volumeFlyoutTimer !== null) {
+			window.clearTimeout(this.volumeFlyoutTimer);
+			this.volumeFlyoutTimer = null;
+		}
 		this.renderer?.dispose();
 		this.renderer = null;
 		this.popoverEl?.remove();
@@ -1033,16 +968,13 @@ export class PopoverManager {
 		this.navEl = null;
 		this.navBackEl = null;
 		this.navForwardEl = null;
+		this.zoomBadgeEl = null;
 		this.muteBtnEl = null;
 		this.pinBtnEl = null;
+		this.volumeFlyoutEl = null;
 		this.pinned = false;
 		this.isEmbed = false;
 		this.audioActive = false;
-		if (this.volumeFlyoutTimer !== null) {
-			window.clearTimeout(this.volumeFlyoutTimer);
-			this.volumeFlyoutTimer = null;
-		}
-		this.volumeFlyoutEl = null;
 		this.maximized = false;
 		this.savedRect = null;
 		this.resizing = false;
