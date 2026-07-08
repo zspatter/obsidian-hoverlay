@@ -5,6 +5,7 @@ import type HoverlayPlugin from "./main";
 import { modifiersHeld, isHostBlocked, matchDomainMode, resolveZoomModifier } from "./rules";
 import type { ZoomModifier } from "./rules";
 import { normalizeUrl, findLinkAtOffset } from "./links";
+import { resolveEmbedUrl } from "./embeds";
 import { renderWebview } from "./renderers/webview";
 import { renderCard } from "./renderers/card";
 import { renderReader } from "./renderers/reader";
@@ -428,15 +429,6 @@ export class PopoverManager {
 			this.updateNavState();
 		};
 
-		// in-preview navigation: live-update the URL readout and history buttons
-		const handleNavigate = (nextUrl: string) => {
-			if (this.currentUrl !== url) return; // a different popover took over
-			this.displayedUrl = nextUrl;
-			this.headerUrlEl?.setText(nextUrl);
-			this.headerUrlEl?.setAttribute("title", nextUrl);
-			this.updateNavState();
-		};
-
 		// per-domain override beats the global preview mode
 		let host = "";
 		try {
@@ -447,10 +439,29 @@ export class PopoverManager {
 		const mode =
 			(host ? matchDomainMode(host, this.plugin.domainModeRules) : null) ??
 			settings.renderMode;
+
+		// in auto mode, media links load the provider's embedded player: lighter
+		// than the full page, and embed pages are designed for exactly this.
+		// An explicit webview mode (global or per-domain) forces the raw page.
+		const loadUrl =
+			mode === "auto" && settings.enableEmbeds ? resolveEmbedUrl(url) ?? url : url;
+
+		// in-preview navigation: live-update the URL readout and history buttons.
+		// The initial load is skipped so an embedded player keeps showing the
+		// link's own URL rather than the internal player URL.
+		const handleNavigate = (nextUrl: string) => {
+			if (this.currentUrl !== url) return; // a different popover took over
+			if (nextUrl === loadUrl) return;
+			this.displayedUrl = nextUrl;
+			this.headerUrlEl?.setText(nextUrl);
+			this.headerUrlEl?.setAttribute("title", nextUrl);
+			this.updateNavState();
+		};
+
 		if ((mode === "auto" || mode === "webview") && Platform.isDesktopApp) {
 			this.renderer = renderWebview(
 				content,
-				url,
+				loadUrl,
 				settings.webviewZoom,
 				fallBackToCard,
 				handleNavigate

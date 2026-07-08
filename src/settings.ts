@@ -31,6 +31,8 @@ export interface HoverlaySettings {
 	popoverHeight: number;
 	/** remember the size after dragging the popover edges */
 	persistResize: boolean;
+	/** in auto mode, load supported media links as the provider's embedded player */
+	enableEmbeds: boolean;
 	/** zoom factor applied to the webview so pages read like a thumbnail */
 	webviewZoom: number;
 	/** key held (with scroll) to zoom an open preview */
@@ -52,6 +54,7 @@ export const DEFAULT_SETTINGS: HoverlaySettings = {
 	popoverWidth: 480,
 	popoverHeight: 340,
 	persistResize: true,
+	enableEmbeds: true,
 	webviewZoom: 0.65,
 	zoomModifier: "ctrl",
 	domainBlocklist: "",
@@ -216,6 +219,20 @@ export class HoverlaySettingTab extends PluginSettingTab {
 						this.plugin.settings.renderMode = value as RenderMode;
 						await this.plugin.saveSettings();
 					})
+			);
+
+		new Setting(containerEl)
+			.setName("Embedded players")
+			.setDesc(
+				"In Auto mode, links to supported media (YouTube, Vimeo, Spotify, SoundCloud) " +
+					"load the provider's embedded player instead of the full page. " +
+					"Set host: webview in the per-domain modes below to force the full page for a site."
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.enableEmbeds).onChange(async (value) => {
+					this.plugin.settings.enableEmbeds = value;
+					await this.plugin.saveSettings();
+				})
 			);
 
 		this.addNumberField(
