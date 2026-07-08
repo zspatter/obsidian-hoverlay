@@ -1,0 +1,418 @@
+/* the popover has visible overflow so resize handles can overhang its bounds
+   (pointer overshoot still lands on a child and keeps the popover alive);
+   the frame provides the clipped, rounded, themed visual box */
+.hoverlay-popover {
+	position: fixed;
+	z-index: var(--layer-popover, 30);
+}
+
+.hoverlay-frame {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	height: 100%;
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	box-shadow: var(--shadow-s);
+	overflow: hidden;
+}
+
+/* ---- header (doubles as the drag handle) ---- */
+
+.hoverlay-header {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	height: 30px;
+	flex-shrink: 0;
+	padding: 0 var(--size-4-1) 0 var(--size-4-2);
+	background-color: var(--background-secondary);
+	border-bottom: 1px solid var(--background-modifier-border);
+	cursor: grab;
+	user-select: none;
+}
+
+.hoverlay-header.is-dragging {
+	cursor: grabbing;
+}
+
+.hoverlay-zoom-badge {
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.15s ease;
+	font-size: var(--font-ui-smaller);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-muted);
+	background-color: var(--background-modifier-hover);
+	border-radius: var(--radius-s);
+	padding: 0 var(--size-4-1);
+	margin-right: var(--size-4-1);
+	cursor: pointer;
+}
+
+.hoverlay-zoom-badge.is-visible {
+	opacity: 1;
+	pointer-events: auto;
+}
+
+.hoverlay-header-url {
+	flex: 1;
+	min-width: 0;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.hoverlay-header-nav {
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+.hoverlay-header-nav.is-hidden {
+	display: none;
+}
+
+.hoverlay-header-actions {
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+.hoverlay-header-btn {
+	padding: var(--size-2-2);
+}
+
+.hoverlay-header-btn.is-disabled {
+	opacity: 0.35;
+	pointer-events: none;
+}
+
+.hoverlay-header-btn svg {
+	width: 14px;
+	height: 14px;
+}
+
+/* ---- content / renderers ---- */
+
+.hoverlay-content {
+	position: relative;
+	flex: 1;
+	min-height: 0;
+}
+
+.hoverlay-webview-frame {
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+}
+
+.hoverlay-webview {
+	display: flex;
+	border: none;
+	background-color: var(--background-primary);
+	transform-origin: 0 0;
+}
+
+.hoverlay-card {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow-y: auto;
+}
+
+.hoverlay-card-image {
+	flex-shrink: 0;
+	max-height: 55%;
+	overflow: hidden;
+}
+
+.hoverlay-card-image img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+.hoverlay-card-body {
+	padding: var(--size-4-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-4-2);
+	min-height: 0;
+}
+
+.hoverlay-card-title {
+	font-weight: var(--font-semibold);
+	font-size: var(--font-ui-medium);
+	color: var(--text-normal);
+}
+
+.hoverlay-card-description {
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	overflow: hidden;
+	display: -webkit-box;
+	-webkit-line-clamp: 4;
+	-webkit-box-orient: vertical;
+}
+
+.hoverlay-card-footer {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-1);
+	font-size: var(--font-ui-smaller);
+	color: var(--text-faint);
+	margin-top: auto;
+}
+
+.hoverlay-card-favicon {
+	width: 14px;
+	height: 14px;
+}
+
+/* ---- reader mode ---- */
+
+.hoverlay-reader {
+	position: relative;
+	height: 100%;
+	overflow-y: auto;
+	padding: var(--size-4-4);
+}
+
+.hoverlay-reader-title {
+	font-size: var(--font-ui-large);
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+	margin-bottom: var(--size-4-2);
+}
+
+.hoverlay-reader-byline {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	margin-bottom: var(--size-4-3);
+}
+
+.hoverlay-reader-body {
+	font-size: var(--font-ui-small);
+	line-height: var(--line-height-normal);
+	color: var(--text-normal);
+}
+
+.hoverlay-reader-body img {
+	max-width: 100%;
+	height: auto;
+	border-radius: var(--radius-s);
+}
+
+.hoverlay-reader-body a {
+	color: var(--link-external-color, var(--text-accent));
+}
+
+.hoverlay-reader-body pre {
+	overflow-x: auto;
+	background-color: var(--code-background, var(--background-secondary));
+	border-radius: var(--radius-s);
+	padding: var(--size-4-2);
+}
+
+.hoverlay-reader-body blockquote {
+	border-left: 2px solid var(--interactive-accent);
+	margin-left: 0;
+	padding-left: var(--size-4-3);
+	color: var(--text-muted);
+}
+
+/* ---- loading state shared by both renderers ---- */
+
+.hoverlay-loading {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: var(--background-primary);
+}
+
+.hoverlay-spinner {
+	width: 28px;
+	height: 28px;
+	border: 3px solid var(--background-modifier-border);
+	border-top-color: var(--interactive-accent);
+	border-radius: 50%;
+	animation: hoverlay-spin 0.8s linear infinite;
+}
+
+@keyframes hoverlay-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* ---- resize handles ----
+   generous invisible hit zones straddling each edge and corner, extending
+   ~8-12px beyond the popover so overshooting an edge neither loses the
+   popover nor the grab; visible feedback is drawn on the frame (below) */
+
+.hoverlay-resize {
+	position: absolute;
+	z-index: 2;
+}
+
+.hoverlay-resize-e {
+	top: 6px;
+	bottom: 6px;
+	right: -8px;
+	width: 14px;
+	cursor: ew-resize;
+}
+
+.hoverlay-resize-w {
+	top: 6px;
+	bottom: 6px;
+	left: -8px;
+	width: 14px;
+	cursor: ew-resize;
+}
+
+.hoverlay-resize-s {
+	left: 6px;
+	right: 6px;
+	bottom: -8px;
+	height: 14px;
+	cursor: ns-resize;
+}
+
+.hoverlay-resize-n {
+	left: 6px;
+	right: 6px;
+	top: -8px;
+	height: 14px;
+	cursor: ns-resize;
+}
+
+/* corners sit mostly outside the popover so they don't steal clicks from
+   the header buttons in the top corners */
+.hoverlay-resize-se {
+	right: -12px;
+	bottom: -12px;
+	width: 18px;
+	height: 18px;
+	cursor: nwse-resize;
+}
+
+.hoverlay-resize-sw {
+	left: -12px;
+	bottom: -12px;
+	width: 18px;
+	height: 18px;
+	cursor: nesw-resize;
+}
+
+.hoverlay-resize-ne {
+	right: -12px;
+	top: -12px;
+	width: 18px;
+	height: 18px;
+	cursor: nesw-resize;
+}
+
+.hoverlay-resize-nw {
+	left: -12px;
+	top: -12px;
+	width: 18px;
+	height: 18px;
+	cursor: nwse-resize;
+}
+
+/* ---- edge highlight ----
+   drawn on the frame so it can follow the rounded corners; left/right use
+   ::before and top/bottom use ::after, and since only adjacent sides ever
+   light together (a corner), the pairs never collide */
+
+.hoverlay-frame::before,
+.hoverlay-frame::after {
+	content: "";
+	position: absolute;
+	z-index: 3;
+	pointer-events: none;
+	background-color: var(--interactive-accent);
+	opacity: 0;
+	transition: opacity 0.12s ease;
+}
+
+.hoverlay-hl-right .hoverlay-frame::before {
+	top: 0;
+	bottom: 0;
+	right: 0;
+	width: 2px;
+	border-radius: 0 var(--radius-m) var(--radius-m) 0;
+	opacity: 0.9;
+}
+
+.hoverlay-hl-left .hoverlay-frame::before {
+	top: 0;
+	bottom: 0;
+	left: 0;
+	width: 2px;
+	border-radius: var(--radius-m) 0 0 var(--radius-m);
+	opacity: 0.9;
+}
+
+.hoverlay-hl-bottom .hoverlay-frame::after {
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 2px;
+	border-radius: 0 0 var(--radius-m) var(--radius-m);
+	opacity: 0.9;
+}
+
+.hoverlay-hl-top .hoverlay-frame::after {
+	left: 0;
+	right: 0;
+	top: 0;
+	height: 2px;
+	border-radius: var(--radius-m) var(--radius-m) 0 0;
+	opacity: 0.9;
+}
+
+/* ---- shields ---- */
+
+/* transparent overlay active only during a resize drag */
+.hoverlay-shield {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+}
+
+/* transparent overlay while the zoom key is held: lets the host receive
+   wheel events for zoom, which the webview guest would otherwise consume */
+.hoverlay-zoom-shield {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	cursor: zoom-in;
+}
+
+/* ---- settings ---- */
+
+.hoverlay-number-input {
+	width: 90px;
+	text-align: right;
+}
+
+/* zoom settings when no non-conflicting zoom key remains */
+.hoverlay-setting-disabled {
+	opacity: 0.55;
+}
+
+/* zoom key options claimed by the trigger combination */
+.hoverlay-zoom-select option:disabled {
+	color: var(--text-faint);
+}
