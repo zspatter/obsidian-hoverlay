@@ -59,14 +59,21 @@ function themedScrollbarCss(): string {
 	`;
 }
 
+export interface WebviewOptions {
+	zoom: number;
+	muted: boolean;
+	onFail: () => void;
+	onNavigate: (url: string) => void;
+	/** fired when the guest starts playing media (also fires for muted media) */
+	onMediaPlaying: () => void;
+}
+
 export function renderWebview(
 	container: HTMLElement,
 	url: string,
-	zoom: number,
-	muted: boolean,
-	onFail: () => void,
-	onNavigate: (url: string) => void
+	options: WebviewOptions
 ): RendererHandle {
+	const { zoom, muted, onFail, onNavigate, onMediaPlaying } = options;
 	const frame = container.createDiv({ cls: "hoverlay-webview-frame" });
 	const webview = document.createElement("webview") as ElectronWebview;
 	webview.setAttribute("src", url);
@@ -146,6 +153,19 @@ export function renderWebview(
 		else if (message === NAV_FORWARD_MSG) navigation.forward();
 	});
 
+	webview.addEventListener("media-started-playing", () => onMediaPlaying());
+
+	// a guest player's own fullscreen button fullscreens the whole window;
+	// track it so dispose can restore the window if the popover closes while
+	// the guest is still fullscreen (otherwise Obsidian is stuck fullscreen)
+	let guestFullscreen = false;
+	webview.addEventListener("enter-html-full-screen", () => {
+		guestFullscreen = true;
+	});
+	webview.addEventListener("leave-html-full-screen", () => {
+		guestFullscreen = false;
+	});
+
 	// keep keyboard focus host-side: if the guest page grabs focus (a click
 	// into the preview), the host stops receiving key events and Escape,
 	// modifier tracking and zoom all silently break. A hover preview is
@@ -165,6 +185,10 @@ export function renderWebview(
 	return {
 		dispose: () => {
 			loading.remove();
+			const fullscreenEl = document.fullscreenElement;
+			if (guestFullscreen || (fullscreenEl && frame.contains(fullscreenEl))) {
+				void document.exitFullscreen().catch(() => {});
+			}
 			try {
 				webview.stop();
 			} catch {

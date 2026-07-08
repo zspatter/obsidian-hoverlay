@@ -96,6 +96,10 @@
 	display: none;
 }
 
+.hoverlay-header-btn.is-active {
+	color: var(--interactive-accent);
+}
+
 .hoverlay-header-btn svg {
 	width: 14px;
 	height: 14px;

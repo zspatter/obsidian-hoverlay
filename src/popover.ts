@@ -79,6 +79,10 @@ export class PopoverManager {
 	private zoomBadgeTimer: number | null = null;
 	private muteBtnEl: HTMLElement | null = null;
 	private muted = true;
+	private isEmbed = false;
+	private audioActive = false;
+	private pinBtnEl: HTMLElement | null = null;
+	private pinned = false;
 	private heldKeys = new Set<string>();
 	// hover resolution runs on every mouseover in the app; skip re-resolving
 	// the same element in quick succession (editor scans force layout reads)
@@ -450,9 +454,11 @@ export class PopoverManager {
 			domainMode === "embed" || (mode === "auto" && settings.enableEmbeds);
 		const embedUrl = embedWanted ? resolveEmbedUrl(url) : null;
 		const loadUrl = embedUrl ?? url;
+		this.isEmbed = embedUrl !== null;
 		// deliberate media playback should be audible; arbitrary pages stay
 		// muted so hover previews never blare autoplay noise
-		this.muted = embedUrl === null;
+		this.muted = !this.isEmbed;
+		this.audioActive = false;
 
 		// in-preview navigation: live-update the URL readout and history buttons.
 		// The initial load is skipped so an embedded player keeps showing the
@@ -467,14 +473,17 @@ export class PopoverManager {
 		};
 
 		if ((mode === "auto" || mode === "webview") && Platform.isDesktopApp) {
-			this.renderer = renderWebview(
-				content,
-				loadUrl,
-				settings.webviewZoom,
-				this.muted,
-				fallBackToCard,
-				handleNavigate
-			);
+			this.renderer = renderWebview(content, loadUrl, {
+				zoom: settings.webviewZoom,
+				muted: this.muted,
+				onFail: fallBackToCard,
+				onNavigate: handleNavigate,
+				onMediaPlaying: () => {
+					if (this.currentUrl !== url) return;
+					this.audioActive = true;
+					this.updateMuteButton();
+				},
+			});
 		} else if (mode === "reader") {
 			this.renderer = renderReader(content, url, fallBackToCard);
 		} else {
@@ -487,6 +496,20 @@ export class PopoverManager {
 		if (this.zoomKeyHeld()) this.addZoomShield();
 	}
 
+	private togglePin(): void {
+		this.pinned = !this.pinned;
+		if (this.pinned) this.cancelHide();
+		const button = this.pinBtnEl;
+		if (!button) return;
+		setIcon(button, this.pinned ? "pin-off" : "pin");
+		button.toggleClass("is-active", this.pinned);
+		const label = this.pinned
+			? "Unpin (resume closing when the pointer leaves)"
+			: "Pin (stay open until Escape or a click elsewhere)";
+		button.setAttribute("aria-label", label);
+		button.setAttribute("title", label);
+	}
+
 	private toggleMute(): void {
 		if (!this.renderer?.setMuted) return;
 		this.muted = !this.muted;
@@ -494,10 +517,13 @@ export class PopoverManager {
 		this.updateMuteButton();
 	}
 
+	/** embeds always show the speaker (media is the point); ordinary pages
+	 *  only once the guest actually starts playing something */
 	private updateMuteButton(): void {
 		const button = this.muteBtnEl;
 		if (!button) return;
-		button.toggleClass("is-hidden", !this.renderer?.setMuted);
+		const relevant = !!this.renderer?.setMuted && (this.isEmbed || this.audioActive);
+		button.toggleClass("is-hidden", !relevant);
 		setIcon(button, this.muted ? "volume-x" : "volume-2");
 		const label = this.muted ? "Unmute" : "Mute";
 		button.setAttribute("aria-label", label);
@@ -568,7 +594,15 @@ export class PopoverManager {
 		const addAction = (icon: string, label: string, onClick: () => void): HTMLElement =>
 			iconButton(actions, icon, label, onClick);
 
-		// mute toggle; hidden for renderers without audio (card, reader)
+		// per-popover pin: hover dismissal off until unpinned, Escape/X/click
+		// outside still close. Redundant when the global mode is already sticky.
+		if (this.plugin.settings.stickyMode === "hover") {
+			this.pinBtnEl = addAction("pin", "Pin (stay open until Escape or a click elsewhere)", () =>
+				this.togglePin()
+			);
+		}
+
+		// mute toggle; hidden until audio is relevant (see updateMuteButton)
 		this.muteBtnEl = addAction("volume-x", "Unmute", () => this.toggleMute());
 		this.muteBtnEl.addClass("is-hidden");
 
@@ -884,6 +918,7 @@ export class PopoverManager {
 	// ---- timers / teardown ----
 
 	private scheduleHide(): void {
+		if (this.pinned) return; // pinned popovers close via Escape, X or click outside
 		if (this.maximized) return; // see toggleMaximize: hover dismissal is suspended
 		if (this.resizing || this.dragging) return; // never close mid-drag
 		this.cancelHide();
@@ -924,6 +959,10 @@ export class PopoverManager {
 		this.navBackEl = null;
 		this.navForwardEl = null;
 		this.muteBtnEl = null;
+		this.pinBtnEl = null;
+		this.pinned = false;
+		this.isEmbed = false;
+		this.audioActive = false;
 		this.maximized = false;
 		this.savedRect = null;
 		this.resizing = false;
