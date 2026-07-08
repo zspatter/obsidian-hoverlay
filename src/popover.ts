@@ -748,7 +748,7 @@ export class PopoverManager {
 
 	/** the zoom key actually in effect: settings choice, migrated away from any
 	 *  trigger-key conflict, or null when zoom is disabled (see resolveZoomModifier) */
-	private activeZoomModifier(): ZoomModifier | null {
+	private activeZoomModifier(): Exclude<ZoomModifier, "none"> | null {
 		const { zoomModifier, modifiers, closeOnModifierRelease } = this.plugin.settings;
 		return resolveZoomModifier(zoomModifier, modifiers, closeOnModifierRelease);
 	}

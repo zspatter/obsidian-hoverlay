@@ -28,9 +28,10 @@ export function modifiersHeld(evt: ModifierState, required: ModifierKey[]): bool
 	});
 }
 
-export type ZoomModifier = "ctrl" | "alt" | "shift";
+/** "none" = scroll zoom deliberately off */
+export type ZoomModifier = "ctrl" | "alt" | "shift" | "none";
 
-const ZOOM_OPTIONS: ZoomModifier[] = ["ctrl", "alt", "shift"];
+const ZOOM_KEYS: Exclude<ZoomModifier, "none">[] = ["ctrl", "alt", "shift"];
 
 export function zoomConflictsWithTriggers(
 	option: ZoomModifier,
@@ -44,24 +45,27 @@ export function zoomConflictsWithTriggers(
 			return triggers.includes("alt");
 		case "shift":
 			return triggers.includes("shift");
+		case "none":
+			return false;
 	}
 }
 
 /**
- * With close-on-modifier-release, the trigger keys are held for the whole
- * life of the popover; if the zoom key were one of them, the zoom shield
- * would be up permanently and block all interaction with the page. Resolve
- * to a non-conflicting key, or null when every option conflicts (zoom is
- * disabled entirely in that configuration).
+ * The zoom key actually in effect, or null when scroll zoom is off: either
+ * chosen off ("none"), or unavailable because with close-on-modifier-release
+ * the trigger keys are held for the whole life of the popover, and a zoom
+ * key among them would keep the zoom shield up permanently. A conflicting
+ * preference resolves to a free key when one exists.
  */
 export function resolveZoomModifier(
 	preferred: ZoomModifier,
 	triggers: ModifierKey[],
 	closeOnRelease: boolean
-): ZoomModifier | null {
+): Exclude<ZoomModifier, "none"> | null {
+	if (preferred === "none") return null;
 	if (!closeOnRelease || triggers.length === 0) return preferred;
 	if (!zoomConflictsWithTriggers(preferred, triggers)) return preferred;
-	return ZOOM_OPTIONS.find((option) => !zoomConflictsWithTriggers(option, triggers)) ?? null;
+	return ZOOM_KEYS.find((option) => !zoomConflictsWithTriggers(option, triggers)) ?? null;
 }
 
 export function getBlockedHosts(blocklist: string): string[] {

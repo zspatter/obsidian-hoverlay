@@ -115,6 +115,15 @@ describe("resolveZoomModifier", () => {
 		expect(resolveZoomModifier("ctrl", ["ctrl", "alt", "shift"], true)).toBeNull();
 		expect(resolveZoomModifier("alt", ["meta", "alt", "shift"], true)).toBeNull();
 	});
+
+	it("Off always resolves to null and never conflicts", () => {
+		for (const triggers of subsets(ALL_MODIFIERS)) {
+			for (const closeOnRelease of [false, true]) {
+				expect(resolveZoomModifier("none", triggers, closeOnRelease)).toBeNull();
+				expect(zoomConflictsWithTriggers("none", triggers)).toBe(false);
+			}
+		}
+	});
 });
 
 describe("per-domain modes", () => {
