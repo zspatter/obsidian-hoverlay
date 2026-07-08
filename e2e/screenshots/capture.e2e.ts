@@ -8,6 +8,7 @@ import {
 	hoverAndWaitForPopover,
 	parkPointer,
 	restoreSettings,
+	setSettings,
 	snapshotSettings,
 } from "../helpers";
 
@@ -114,12 +115,16 @@ describe("capture screenshots", function () {
 	});
 
 	it("spotify embed", async function () {
+		// a popover taller than Spotify's 352px card, so the shot shows the
+		// fit-to-content trim hugging the card instead of clipping it
+		await setSettings({ popoverHeight: 520 });
 		await hoverAndWaitForPopover(SONG_LINK);
 		await browser.pause(3500); // embed card + artwork
 		await $(".hoverlay-webview").click(); // start the preview
 		await browser.pause(2000);
 		await browser.saveScreenshot(`${OUT}/spotify-embed.png`);
 		await dismissPopover();
+		await restoreSettings(defaults);
 	});
 
 	it("settings tab", async function () {
