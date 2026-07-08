@@ -135,6 +135,19 @@ export function clampZoom(value: number): number {
 	return Math.round(clamp(value, ZOOM_MIN, ZOOM_MAX) * 100) / 100;
 }
 
+/** the configured popover size can exceed a small (mobile) viewport, which
+ *  would push the header controls off-screen; cap both dimensions to fit */
+export function clampSizeToViewport(
+	size: Size,
+	viewport: Size,
+	margin = VIEWPORT_MARGIN
+): Size {
+	return {
+		width: Math.min(size.width, viewport.width - margin * 2),
+		height: Math.min(size.height, viewport.height - margin * 2),
+	};
+}
+
 /**
  * Trim a content box to an embed's natural size: fixed-height cards give up
  * the height below the card; letterboxed players give up whichever dimension

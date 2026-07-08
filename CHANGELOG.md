@@ -6,6 +6,13 @@ All notable changes to Hoverlay are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-08
+
+### Fixed
+
+- Popovers wider or taller than the viewport are capped to fit, so the
+  header controls stay on-screen on narrow (mobile) displays
+
 ## [0.1.0] - 2026-07-08
 
 Initial release.
@@ -48,5 +55,6 @@ Initial release.
   delays, per-domain preview modes and a domain blocklist
 - "Preview link under cursor" command, bindable to a hotkey
 
-[Unreleased]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.0...HEAD
+[Unreleased]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.1...HEAD
+[0.1.1]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/zspatter/obsidian-hoverlay/releases/tag/0.1.0

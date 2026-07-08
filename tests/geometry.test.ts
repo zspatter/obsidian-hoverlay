@@ -6,6 +6,7 @@ import {
 	VIEWPORT_MARGIN,
 	ZOOM_MAX,
 	ZOOM_MIN,
+	clampSizeToViewport,
 	clampZoom,
 	dragPosition,
 	fitEmbedSize,
@@ -131,6 +132,45 @@ describe("maximizedRect", () => {
 			width: 1280 - 48,
 			height: 800 - 48,
 		});
+	});
+});
+
+describe("clampSizeToViewport", () => {
+	it("caps both dimensions to the viewport minus margins, never grows", () => {
+		const sizes = [
+			{ width: 260, height: 180 },
+			{ width: 480, height: 340 },
+			{ width: 1200, height: 900 },
+			{ width: 5000, height: 5000 },
+		];
+		const viewports = [
+			{ width: 360, height: 780 }, // phone
+			{ width: 768, height: 1024 }, // tablet
+			{ width: 1280, height: 800 }, // desktop
+		];
+		for (const size of sizes) {
+			for (const viewport of viewports) {
+				const clamped = clampSizeToViewport(size, viewport);
+				expect(clamped.width).toBeLessThanOrEqual(viewport.width - VIEWPORT_MARGIN * 2);
+				expect(clamped.height).toBeLessThanOrEqual(
+					viewport.height - VIEWPORT_MARGIN * 2
+				);
+				expect(clamped.width).toBeLessThanOrEqual(size.width);
+				expect(clamped.height).toBeLessThanOrEqual(size.height);
+			}
+		}
+	});
+
+	it("leaves a size that already fits untouched", () => {
+		expect(clampSizeToViewport({ width: 480, height: 340 }, VIEWPORT)).toEqual({
+			width: 480,
+			height: 340,
+		});
+	});
+
+	it("caps the default width on a phone screen so header controls fit", () => {
+		expect(clampSizeToViewport({ width: 480, height: 340 }, { width: 360, height: 780 }))
+			.toEqual({ width: 360 - VIEWPORT_MARGIN * 2, height: 340 });
 	});
 });
 

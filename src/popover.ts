@@ -11,6 +11,7 @@ import type { Presentation } from "./presentation";
 import {
 	RESIZE_HANDLES,
 	ZOOM_STEP,
+	clampSizeToViewport,
 	clampZoom,
 	dragPosition,
 	fitEmbedSize,
@@ -350,11 +351,16 @@ export class PopoverManager {
 	/** header bar plus the frame border, in px; the rest is content */
 	private static readonly POPOVER_CHROME = 32;
 
-	/** the configured size, trimmed to an embed's natural content size so
+	/** the configured size, capped to the viewport (a phone screen is
+	 *  narrower than the default width, which would push the header controls
+	 *  off-screen), then trimmed to an embed's natural content size so
 	 *  fixed-height cards and letterboxed players don't sit in whitespace */
 	private popoverSizeFor(presentation: Presentation): Size {
 		const { settings } = this.plugin;
-		const size = { width: settings.popoverWidth, height: settings.popoverHeight };
+		const size = clampSizeToViewport(
+			{ width: settings.popoverWidth, height: settings.popoverHeight },
+			viewportSize()
+		);
 		const hint = presentation.embedHint;
 		if (!hint) return size;
 
