@@ -81,6 +81,8 @@ export class PopoverManager {
 	private muted = true;
 	private isEmbed = false;
 	private audioActive = false;
+	private volumeFlyoutEl: HTMLElement | null = null;
+	private volumeFlyoutTimer: number | null = null;
 	private pinBtnEl: HTMLElement | null = null;
 	private pinned = false;
 	private heldKeys = new Set<string>();
@@ -476,6 +478,7 @@ export class PopoverManager {
 			this.renderer = renderWebview(content, loadUrl, {
 				zoom: settings.webviewZoom,
 				muted: this.muted,
+				volume: settings.mediaVolume,
 				onFail: fallBackToCard,
 				onNavigate: handleNavigate,
 				onMediaPlaying: () => {
@@ -494,6 +497,81 @@ export class PopoverManager {
 
 		// zoom key may already be held down when the popover opens
 		if (this.zoomKeyHeld()) this.addZoomShield();
+	}
+
+	/** volume slider flyout, shown while hovering the speaker button or the
+	 *  flyout itself; the value is a single global setting, not per-site */
+	private buildVolumeFlyout(frame: HTMLElement, muteBtn: HTMLElement): void {
+		const flyout = frame.createDiv({ cls: "hoverlay-volume-flyout is-hidden" });
+		this.volumeFlyoutEl = flyout;
+
+		// the visible control is drawn with plain divs so no app or theme
+		// range-input styling can interfere; the input below is only an
+		// invisible interaction layer
+		const track = flyout.createDiv({ cls: "hoverlay-volume-track" });
+		track.createDiv({ cls: "hoverlay-volume-fill" });
+		track.createDiv({ cls: "hoverlay-volume-thumb" });
+
+		const slider = flyout.createEl("input", {
+			cls: "hoverlay-volume-slider",
+			attr: {
+				type: "range",
+				min: "0",
+				max: "100",
+				step: "5",
+				"aria-label": "Media volume",
+			},
+		});
+		slider.value = String(Math.round(this.plugin.settings.mediaVolume * 100));
+
+		// drives the fill height and thumb position of the drawn control
+		const updateFill = () =>
+			flyout.style.setProperty("--hoverlay-volume-fill", `${slider.value}%`);
+		updateFill();
+
+		slider.addEventListener("input", () => {
+			updateFill();
+			const volume = Number(slider.value) / 100;
+			this.plugin.settings.mediaVolume = volume;
+			this.renderer?.setVolume?.(volume);
+			// adjusting volume is an intent to hear it
+			if (this.muted && volume > 0) {
+				this.muted = false;
+				this.renderer?.setMuted?.(false);
+			}
+			this.updateMuteButton();
+		});
+		// persist once per adjustment, not on every drag tick
+		slider.addEventListener("change", () => void this.plugin.saveSettings());
+
+		const showFlyout = () => {
+			if (this.volumeFlyoutTimer !== null) {
+				window.clearTimeout(this.volumeFlyoutTimer);
+				this.volumeFlyoutTimer = null;
+			}
+			if (!this.renderer?.setVolume || muteBtn.hasClass("is-hidden")) return;
+			flyout.removeClass("is-hidden");
+			// anchor centered under the speaker button; its position shifts as
+			// header buttons come and go, so compute at show time
+			const frameRect = frame.getBoundingClientRect();
+			const buttonRect = muteBtn.getBoundingClientRect();
+			const left =
+				buttonRect.left - frameRect.left + buttonRect.width / 2 - flyout.offsetWidth / 2;
+			const maxLeft = frame.clientWidth - flyout.offsetWidth - 4;
+			flyout.style.left = `${Math.max(4, Math.min(maxLeft, left))}px`;
+		};
+		const scheduleFlyoutHide = () => {
+			if (this.volumeFlyoutTimer !== null) window.clearTimeout(this.volumeFlyoutTimer);
+			this.volumeFlyoutTimer = window.setTimeout(() => {
+				this.volumeFlyoutTimer = null;
+				flyout.addClass("is-hidden");
+			}, 250);
+		};
+
+		muteBtn.addEventListener("mouseenter", showFlyout);
+		muteBtn.addEventListener("mouseleave", scheduleFlyoutHide);
+		flyout.addEventListener("mouseenter", showFlyout);
+		flyout.addEventListener("mouseleave", scheduleFlyoutHide);
 	}
 
 	private togglePin(): void {
@@ -524,7 +602,12 @@ export class PopoverManager {
 		if (!button) return;
 		const relevant = !!this.renderer?.setMuted && (this.isEmbed || this.audioActive);
 		button.toggleClass("is-hidden", !relevant);
-		setIcon(button, this.muted ? "volume-x" : "volume-2");
+		const icon = this.muted
+			? "volume-x"
+			: this.plugin.settings.mediaVolume < 0.5
+				? "volume-1"
+				: "volume-2";
+		setIcon(button, icon);
 		const label = this.muted ? "Unmute" : "Mute";
 		button.setAttribute("aria-label", label);
 		button.setAttribute("title", label);
@@ -605,6 +688,7 @@ export class PopoverManager {
 		// mute toggle; hidden until audio is relevant (see updateMuteButton)
 		this.muteBtnEl = addAction("volume-x", "Unmute", () => this.toggleMute());
 		this.muteBtnEl.addClass("is-hidden");
+		this.buildVolumeFlyout(parent, this.muteBtnEl);
 
 		const maximizeBtn = addAction("maximize-2", "Maximize", () => {
 			this.toggleMaximize();
@@ -963,6 +1047,11 @@ export class PopoverManager {
 		this.pinned = false;
 		this.isEmbed = false;
 		this.audioActive = false;
+		if (this.volumeFlyoutTimer !== null) {
+			window.clearTimeout(this.volumeFlyoutTimer);
+			this.volumeFlyoutTimer = null;
+		}
+		this.volumeFlyoutEl = null;
 		this.maximized = false;
 		this.savedRect = null;
 		this.resizing = false;

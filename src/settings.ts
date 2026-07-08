@@ -33,6 +33,8 @@ export interface HoverlaySettings {
 	persistResize: boolean;
 	/** in auto mode, load supported media links as the provider's embedded player */
 	enableEmbeds: boolean;
+	/** playback volume for media inside previews, 0..1 (global, not per-site) */
+	mediaVolume: number;
 	/** zoom factor applied to the webview so pages read like a thumbnail */
 	webviewZoom: number;
 	/** key held (with scroll) to zoom an open preview */
@@ -55,6 +57,7 @@ export const DEFAULT_SETTINGS: HoverlaySettings = {
 	popoverHeight: 340,
 	persistResize: true,
 	enableEmbeds: true,
+	mediaVolume: 1,
 	webviewZoom: 0.65,
 	zoomModifier: "ctrl",
 	domainBlocklist: "",
@@ -62,9 +65,12 @@ export const DEFAULT_SETTINGS: HoverlaySettings = {
 };
 
 interface NumberFieldOptions {
+	/** min/max/step are in display units (after displayScale is applied) */
 	min: number;
 	max: number;
 	step: number;
+	/** display multiplier, e.g. 100 to show a 0..1 factor as percent */
+	displayScale?: number;
 	get: () => number;
 	set: (value: number) => void;
 }
@@ -79,17 +85,20 @@ export class HoverlaySettingTab extends PluginSettingTab {
 
 	/** always-visible numeric field with native up/down steppers, clamped on change */
 	private addNumberField(setting: Setting, opts: NumberFieldOptions): void {
+		const scale = opts.displayScale ?? 1;
 		setting.addText((text) => {
 			text.inputEl.type = "number";
 			text.inputEl.min = String(opts.min);
 			text.inputEl.max = String(opts.max);
 			text.inputEl.step = String(opts.step);
 			text.inputEl.addClass("hoverlay-number-input");
-			text.setValue(String(opts.get()));
+			text.setValue(String(Math.round(opts.get() * scale * 100) / 100));
 			text.onChange(async (value) => {
 				const parsed = Number(value);
 				if (!Number.isFinite(parsed)) return;
-				opts.set(Math.min(opts.max, Math.max(opts.min, parsed)));
+				const clamped = Math.min(opts.max, Math.max(opts.min, parsed));
+				// avoid float dust when converting display units back to factors
+				opts.set(Math.round((clamped / scale) * 10000) / 10000);
 				await this.plugin.saveSettings();
 			});
 		});
@@ -237,6 +246,23 @@ export class HoverlaySettingTab extends PluginSettingTab {
 
 		this.addNumberField(
 			new Setting(containerEl)
+				.setName("Media volume")
+				.setDesc(
+					"Playback volume for media inside previews, in percent (0 to 100). Also " +
+						"adjustable by hovering the speaker button on an open preview."
+				),
+			{
+				min: 0,
+				max: 100,
+				step: 5,
+				displayScale: 100,
+				get: () => this.plugin.settings.mediaVolume,
+				set: (value) => (this.plugin.settings.mediaVolume = value),
+			}
+		);
+
+		this.addNumberField(
+			new Setting(containerEl)
 				.setName("Popover width")
 				.setDesc("Default width (px). You can also drag the popover's edges to resize it."),
 			{
@@ -287,11 +313,12 @@ export class HoverlaySettingTab extends PluginSettingTab {
 
 		const pageZoomSetting = new Setting(containerEl)
 			.setName("Page zoom")
-			.setDesc("Zoom factor for the live page preview.");
+			.setDesc("Zoom for the live page preview, in percent (25 to 150).");
 		this.addNumberField(pageZoomSetting, {
-			min: 0.25,
-			max: 1.5,
-			step: 0.05,
+			min: 25,
+			max: 150,
+			step: 5,
+			displayScale: 100,
 			get: () => this.plugin.settings.webviewZoom,
 			set: (value) => (this.plugin.settings.webviewZoom = value),
 		});
