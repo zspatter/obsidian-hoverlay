@@ -77,6 +77,8 @@ export class PopoverManager {
 	private zoomShieldEl: HTMLElement | null = null;
 	private zoomBadgeEl: HTMLElement | null = null;
 	private zoomBadgeTimer: number | null = null;
+	private muteBtnEl: HTMLElement | null = null;
+	private muted = true;
 	private heldKeys = new Set<string>();
 	// hover resolution runs on every mouseover in the app; skip re-resolving
 	// the same element in quick succession (editor scans force layout reads)
@@ -427,6 +429,7 @@ export class PopoverManager {
 			this.renderer?.dispose();
 			this.renderer = renderCard(this.contentEl, url);
 			this.updateNavState();
+			this.updateMuteButton();
 		};
 
 		// per-domain override beats the global preview mode
@@ -436,15 +439,20 @@ export class PopoverManager {
 		} catch {
 			// keep the global mode for unparseable hosts
 		}
-		const mode =
-			(host ? matchDomainMode(host, this.plugin.domainModeRules) : null) ??
-			settings.renderMode;
+		const domainMode = host ? matchDomainMode(host, this.plugin.domainModeRules) : null;
+		const mode = (domainMode === "embed" ? "auto" : domainMode) ?? settings.renderMode;
 
 		// in auto mode, media links load the provider's embedded player: lighter
 		// than the full page, and embed pages are designed for exactly this.
-		// An explicit webview mode (global or per-domain) forces the raw page.
-		const loadUrl =
-			mode === "auto" && settings.enableEmbeds ? resolveEmbedUrl(url) ?? url : url;
+		// An explicit webview mode (global or per-domain) forces the raw page;
+		// a per-domain "embed" entry forces the player even with embeds off.
+		const embedWanted =
+			domainMode === "embed" || (mode === "auto" && settings.enableEmbeds);
+		const embedUrl = embedWanted ? resolveEmbedUrl(url) : null;
+		const loadUrl = embedUrl ?? url;
+		// deliberate media playback should be audible; arbitrary pages stay
+		// muted so hover previews never blare autoplay noise
+		this.muted = embedUrl === null;
 
 		// in-preview navigation: live-update the URL readout and history buttons.
 		// The initial load is skipped so an embedded player keeps showing the
@@ -463,6 +471,7 @@ export class PopoverManager {
 				content,
 				loadUrl,
 				settings.webviewZoom,
+				this.muted,
 				fallBackToCard,
 				handleNavigate
 			);
@@ -472,9 +481,27 @@ export class PopoverManager {
 			this.renderer = renderCard(content, url);
 		}
 		this.updateNavState();
+		this.updateMuteButton();
 
 		// zoom key may already be held down when the popover opens
 		if (this.zoomKeyHeld()) this.addZoomShield();
+	}
+
+	private toggleMute(): void {
+		if (!this.renderer?.setMuted) return;
+		this.muted = !this.muted;
+		this.renderer.setMuted(this.muted);
+		this.updateMuteButton();
+	}
+
+	private updateMuteButton(): void {
+		const button = this.muteBtnEl;
+		if (!button) return;
+		button.toggleClass("is-hidden", !this.renderer?.setMuted);
+		setIcon(button, this.muted ? "volume-x" : "volume-2");
+		const label = this.muted ? "Unmute" : "Mute";
+		button.setAttribute("aria-label", label);
+		button.setAttribute("title", label);
 	}
 
 	/** show the history buttons only for renderers that have a history, and
@@ -540,6 +567,10 @@ export class PopoverManager {
 
 		const addAction = (icon: string, label: string, onClick: () => void): HTMLElement =>
 			iconButton(actions, icon, label, onClick);
+
+		// mute toggle; hidden for renderers without audio (card, reader)
+		this.muteBtnEl = addAction("volume-x", "Unmute", () => this.toggleMute());
+		this.muteBtnEl.addClass("is-hidden");
 
 		const maximizeBtn = addAction("maximize-2", "Maximize", () => {
 			this.toggleMaximize();
@@ -892,6 +923,7 @@ export class PopoverManager {
 		this.navEl = null;
 		this.navBackEl = null;
 		this.navForwardEl = null;
+		this.muteBtnEl = null;
 		this.maximized = false;
 		this.savedRect = null;
 		this.resizing = false;

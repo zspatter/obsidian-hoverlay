@@ -362,8 +362,10 @@ export class HoverlaySettingTab extends PluginSettingTab {
 			.setName("Per-domain preview mode")
 			.setDesc(
 				"Override the preview mode for specific hosts. One per line as host: mode, " +
-					"where mode is auto, webview, reader or card. Subdomains match; the most " +
-					"specific entry wins. Example: heavysite.com: card"
+					"where mode is auto, webview, reader, card or embed. Subdomains match; the most " +
+					"specific entry wins. webview forces the full page even for media links; " +
+					"embed forces the embedded player even when the global toggle is off. " +
+					"Example: heavysite.com: card"
 			)
 			.addTextArea((text) =>
 				text

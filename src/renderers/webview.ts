@@ -63,6 +63,7 @@ export function renderWebview(
 	container: HTMLElement,
 	url: string,
 	zoom: number,
+	muted: boolean,
 	onFail: () => void,
 	onNavigate: (url: string) => void
 ): RendererHandle {
@@ -114,10 +115,14 @@ export function renderWebview(
 		},
 	};
 
+	let ready = false;
+	let currentMuted = muted;
+
 	webview.addEventListener("dom-ready", () => {
+		ready = true;
 		loading.remove();
 		try {
-			webview.setAudioMuted(true);
+			webview.setAudioMuted(currentMuted);
 			void webview.insertCSS(themedScrollbarCss());
 			void webview.executeJavaScript(MOUSE_NAV_BRIDGE);
 		} catch {
@@ -168,6 +173,15 @@ export function renderWebview(
 			frame.remove();
 		},
 		setZoom: applyZoom,
+		setMuted: (nextMuted: boolean) => {
+			currentMuted = nextMuted;
+			if (!ready) return; // dom-ready applies the pending state
+			try {
+				webview.setAudioMuted(nextMuted);
+			} catch {
+				// guest may be mid-navigation
+			}
+		},
 		navigation,
 	};
 }

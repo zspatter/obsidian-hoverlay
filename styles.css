@@ -92,6 +92,10 @@
 	pointer-events: none;
 }
 
+.hoverlay-header-btn.is-hidden {
+	display: none;
+}
+
 .hoverlay-header-btn svg {
 	width: 14px;
 	height: 14px;
