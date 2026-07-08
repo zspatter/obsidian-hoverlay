@@ -77,7 +77,8 @@ CI gates every push and pull request with the unit/component tiers (`ci.yml`) an
 ## Roadmap
 
 - [ ] Additional embed providers on request (the transform table makes new ones cheap)
-- [ ] Wrap embeds in a framed host page, which may unlock playback for label-restricted videos that refuse the bare embed player
+
+Explored and dropped: wrapping embeds in a framed host page. Tested in a real webview; label-restricted YouTube videos show "Video unavailable" framed or not, so the idea buys nothing (it would unlock Twitch, but at the cost of a second embed pathway with degraded audio controls).
 
 ## License
 
