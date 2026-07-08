@@ -35,11 +35,41 @@ interface ElectronWebview extends HTMLElement {
  */
 const NAV_BACK_MSG = "__hoverlay:navigate-back__";
 const NAV_FORWARD_MSG = "__hoverlay:navigate-forward__";
-const MOUSE_NAV_BRIDGE =
-	`window.addEventListener("mouseup", (e) => {` +
-	` if (e.button === 3) console.log("${NAV_BACK_MSG}");` +
-	` else if (e.button === 4) console.log("${NAV_FORWARD_MSG}");` +
-	` }, true); undefined;`;
+
+/**
+ * Injected once per guest navigation: the mouse-nav bridge plus a volume
+ * hook. Electron has no guest volume API (only mute), so volume is applied
+ * to the guest's media elements directly, and a capture-phase play listener
+ * re-applies it to media created later (players build their elements lazily).
+ */
+function guestBootstrapJs(volume: number): string {
+	const level = Math.min(1, Math.max(0, volume));
+	return (
+		`window.addEventListener("mouseup", (e) => {` +
+		` if (e.button === 3) console.log("${NAV_BACK_MSG}");` +
+		` else if (e.button === 4) console.log("${NAV_FORWARD_MSG}");` +
+		` }, true);` +
+		` window.__hoverlayVolume = ${level};` +
+		` if (!window.__hoverlayVolumeHook) {` +
+		` window.__hoverlayVolumeHook = true;` +
+		` window.addEventListener("play", (e) => {` +
+		` const t = e.target;` +
+		` if (t && typeof t.volume === "number" && typeof window.__hoverlayVolume === "number")` +
+		` { try { t.volume = window.__hoverlayVolume; } catch (err) {} }` +
+		` }, true); }` +
+		applyVolumeJs(level)
+	);
+}
+
+function applyVolumeJs(volume: number): string {
+	const level = Math.min(1, Math.max(0, volume));
+	return (
+		` window.__hoverlayVolume = ${level};` +
+		` document.querySelectorAll("video, audio").forEach((el) => {` +
+		` try { el.volume = ${level}; } catch (err) {} });` +
+		` undefined;`
+	);
+}
 
 /** guest pages keep their own scrollbars; theme them with the vault's
  *  scrollbar variables, resolved at render time so theme switches apply */
@@ -59,13 +89,23 @@ function themedScrollbarCss(): string {
 	`;
 }
 
+export interface WebviewOptions {
+	zoom: number;
+	muted: boolean;
+	/** initial media volume, 0..1 */
+	volume: number;
+	onFail: () => void;
+	onNavigate: (url: string) => void;
+	/** fired when the guest starts playing media (also fires for muted media) */
+	onMediaPlaying: () => void;
+}
+
 export function renderWebview(
 	container: HTMLElement,
 	url: string,
-	zoom: number,
-	onFail: () => void,
-	onNavigate: (url: string) => void
+	options: WebviewOptions
 ): RendererHandle {
+	const { zoom, muted, volume, onFail, onNavigate, onMediaPlaying } = options;
 	const frame = container.createDiv({ cls: "hoverlay-webview-frame" });
 	const webview = document.createElement("webview") as ElectronWebview;
 	webview.setAttribute("src", url);
@@ -114,14 +154,19 @@ export function renderWebview(
 		},
 	};
 
+	let ready = false;
+	let currentMuted = muted;
+	let currentVolume = volume;
+
 	webview.addEventListener("dom-ready", () => {
+		ready = true;
 		loading.remove();
 		try {
-			webview.setAudioMuted(true);
+			webview.setAudioMuted(currentMuted);
 			void webview.insertCSS(themedScrollbarCss());
-			void webview.executeJavaScript(MOUSE_NAV_BRIDGE);
+			void webview.executeJavaScript(guestBootstrapJs(currentVolume));
 		} catch {
-			// muting, scrollbar theming and the nav bridge are all optional
+			// muting, scrollbar theming and the guest bootstrap are all optional
 		}
 	});
 
@@ -139,6 +184,19 @@ export function renderWebview(
 		const message = (event as { message?: string })?.message;
 		if (message === NAV_BACK_MSG) navigation.back();
 		else if (message === NAV_FORWARD_MSG) navigation.forward();
+	});
+
+	webview.addEventListener("media-started-playing", () => onMediaPlaying());
+
+	// a guest player's own fullscreen button fullscreens the whole window;
+	// track it so dispose can restore the window if the popover closes while
+	// the guest is still fullscreen (otherwise Obsidian is stuck fullscreen)
+	let guestFullscreen = false;
+	webview.addEventListener("enter-html-full-screen", () => {
+		guestFullscreen = true;
+	});
+	webview.addEventListener("leave-html-full-screen", () => {
+		guestFullscreen = false;
 	});
 
 	// keep keyboard focus host-side: if the guest page grabs focus (a click
@@ -160,6 +218,10 @@ export function renderWebview(
 	return {
 		dispose: () => {
 			loading.remove();
+			const fullscreenEl = document.fullscreenElement;
+			if (guestFullscreen || (fullscreenEl && frame.contains(fullscreenEl))) {
+				void document.exitFullscreen().catch(() => {});
+			}
 			try {
 				webview.stop();
 			} catch {
@@ -168,6 +230,24 @@ export function renderWebview(
 			frame.remove();
 		},
 		setZoom: applyZoom,
+		setMuted: (nextMuted: boolean) => {
+			currentMuted = nextMuted;
+			if (!ready) return; // dom-ready applies the pending state
+			try {
+				webview.setAudioMuted(nextMuted);
+			} catch {
+				// guest may be mid-navigation
+			}
+		},
+		setVolume: (nextVolume: number) => {
+			currentVolume = Math.min(1, Math.max(0, nextVolume));
+			if (!ready) return; // dom-ready applies the pending state
+			try {
+				void webview.executeJavaScript(applyVolumeJs(currentVolume));
+			} catch {
+				// guest may be mid-navigation
+			}
+		},
 		navigation,
 	};
 }

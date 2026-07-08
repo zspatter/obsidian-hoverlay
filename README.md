@@ -8,6 +8,7 @@ The existing hover-preview plugins render external pages in an `<iframe>`. Any s
 
 - **Desktop:** previews render in an Electron `<webview>`, a separate guest page doing top-level navigation. Framing headers do not apply to it. This is the same mechanism Canvas web embeds use.
 - **Reader mode (optional):** fetches the page, extracts the article with Mozilla Readability, sanitizes it with DOMPurify, and renders just the text in your theme's typography. No scripts or trackers ever run.
+- **Embedded players (auto mode):** media links (YouTube, Vimeo, Spotify, SoundCloud) load the provider's embedded player instead of the full page: lighter, no cookie walls, playlist and timestamp parameters preserved. Embeds start with audio on while ordinary pages stay muted against autoplay noise; a header speaker button toggles either. Globally toggleable, `host: webview` forces the full page for a site, `host: embed` forces the player even with the global toggle off.
 - **Mobile, or when a page still fails to load:** Hoverlay fetches the page through Obsidian's `requestUrl` (a main-process request, immune to CORS), parses OpenGraph/Twitter metadata, and renders a compact card with title, description, image and favicon. No third-party preview APIs, no keys.
 
 ## Behavior

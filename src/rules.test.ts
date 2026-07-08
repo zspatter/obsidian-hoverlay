@@ -64,11 +64,12 @@ describe("resolveZoomModifier", () => {
 describe("per-domain modes", () => {
 	it("parses host: mode lines, ignoring malformed or unknown entries", () => {
 		const rules = parseDomainModes(
-			"Example.com: Card\n\nyoutube.com:webview\nbad line\nfoo.com: bogus\n: card"
+			"Example.com: Card\n\nyoutube.com:webview\nbad line\nfoo.com: bogus\n: card\nvimeo.com: embed"
 		);
 		expect(rules).toEqual([
 			{ host: "example.com", mode: "card" },
 			{ host: "youtube.com", mode: "webview" },
+			{ host: "vimeo.com", mode: "embed" },
 		]);
 	});
 

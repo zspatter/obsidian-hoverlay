@@ -92,6 +92,90 @@
 	pointer-events: none;
 }
 
+.hoverlay-header-btn.is-hidden {
+	display: none;
+}
+
+.hoverlay-header-btn.is-active {
+	color: var(--interactive-accent);
+}
+
+/* vertical volume slider flyout; left is set at show time so it centers
+   under the speaker button, whose position shifts with the button set */
+.hoverlay-volume-flyout {
+	position: absolute;
+	top: 32px;
+	left: 0;
+	z-index: 4;
+	width: 34px;
+	height: 134px;
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 17px; /* pill: fully semicircular ends */
+	box-shadow: var(--shadow-s);
+}
+
+.hoverlay-volume-flyout.is-hidden {
+	display: none;
+}
+
+/* the visible control is drawn with plain divs, driven entirely by
+   --hoverlay-volume-fill (0..100%) set on the flyout: no native range
+   rendering means no app or theme slider styling can ever interfere */
+.hoverlay-volume-track {
+	position: absolute;
+	top: 12px;
+	bottom: 12px;
+	left: 50%;
+	width: 6px;
+	margin-left: -3px;
+	border-radius: 3px;
+	background-color: var(--background-modifier-border);
+}
+
+.hoverlay-volume-fill {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	/* stop short of the knob's center so the fill never touches the ring;
+	   the deliberate gap reads cleaner than any contact edge */
+	height: max(0%, calc(var(--hoverlay-volume-fill, 100%) - 10px));
+	border-radius: 3px;
+	background-color: var(--interactive-accent);
+}
+
+.hoverlay-volume-thumb {
+	position: absolute;
+	left: 50%;
+	bottom: var(--hoverlay-volume-fill, 100%);
+	width: 18px;
+	height: 18px;
+	transform: translate(-50%, 50%);
+	border-radius: 50%;
+	background-color: var(--interactive-accent);
+	border: 2px solid var(--background-secondary);
+}
+
+/* interaction layer: an invisible native horizontal range rotated upright
+   (pre-rotation left = 0 lands at the bottom, so up is louder); rotation
+   remaps pointer events correctly in every Chromium */
+.hoverlay-volume-flyout input.hoverlay-volume-slider {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 130px;
+	height: 34px;
+	margin: 0;
+	padding: 0;
+	transform: translate(-50%, -50%) rotate(-90deg);
+	opacity: 0;
+	outline: none;
+	-webkit-appearance: none;
+	appearance: none;
+	cursor: pointer;
+}
+
 .hoverlay-header-btn svg {
 	width: 14px;
 	height: 14px;

@@ -5,6 +5,7 @@ import type HoverlayPlugin from "./main";
 import { modifiersHeld, isHostBlocked, matchDomainMode, resolveZoomModifier } from "./rules";
 import type { ZoomModifier } from "./rules";
 import { normalizeUrl, findLinkAtOffset } from "./links";
+import { resolveEmbedUrl } from "./embeds";
 import { renderWebview } from "./renderers/webview";
 import { renderCard } from "./renderers/card";
 import { renderReader } from "./renderers/reader";
@@ -76,6 +77,14 @@ export class PopoverManager {
 	private zoomShieldEl: HTMLElement | null = null;
 	private zoomBadgeEl: HTMLElement | null = null;
 	private zoomBadgeTimer: number | null = null;
+	private muteBtnEl: HTMLElement | null = null;
+	private muted = true;
+	private isEmbed = false;
+	private audioActive = false;
+	private volumeFlyoutEl: HTMLElement | null = null;
+	private volumeFlyoutTimer: number | null = null;
+	private pinBtnEl: HTMLElement | null = null;
+	private pinned = false;
 	private heldKeys = new Set<string>();
 	// hover resolution runs on every mouseover in the app; skip re-resolving
 	// the same element in quick succession (editor scans force layout reads)
@@ -426,15 +435,7 @@ export class PopoverManager {
 			this.renderer?.dispose();
 			this.renderer = renderCard(this.contentEl, url);
 			this.updateNavState();
-		};
-
-		// in-preview navigation: live-update the URL readout and history buttons
-		const handleNavigate = (nextUrl: string) => {
-			if (this.currentUrl !== url) return; // a different popover took over
-			this.displayedUrl = nextUrl;
-			this.headerUrlEl?.setText(nextUrl);
-			this.headerUrlEl?.setAttribute("title", nextUrl);
-			this.updateNavState();
+			this.updateMuteButton();
 		};
 
 		// per-domain override beats the global preview mode
@@ -444,26 +445,172 @@ export class PopoverManager {
 		} catch {
 			// keep the global mode for unparseable hosts
 		}
-		const mode =
-			(host ? matchDomainMode(host, this.plugin.domainModeRules) : null) ??
-			settings.renderMode;
+		const domainMode = host ? matchDomainMode(host, this.plugin.domainModeRules) : null;
+		const mode = (domainMode === "embed" ? "auto" : domainMode) ?? settings.renderMode;
+
+		// in auto mode, media links load the provider's embedded player: lighter
+		// than the full page, and embed pages are designed for exactly this.
+		// An explicit webview mode (global or per-domain) forces the raw page;
+		// a per-domain "embed" entry forces the player even with embeds off.
+		const embedWanted =
+			domainMode === "embed" || (mode === "auto" && settings.enableEmbeds);
+		const embedUrl = embedWanted ? resolveEmbedUrl(url) : null;
+		const loadUrl = embedUrl ?? url;
+		this.isEmbed = embedUrl !== null;
+		// deliberate media playback should be audible; arbitrary pages stay
+		// muted so hover previews never blare autoplay noise
+		this.muted = !this.isEmbed;
+		this.audioActive = false;
+
+		// in-preview navigation: live-update the URL readout and history buttons.
+		// The initial load is skipped so an embedded player keeps showing the
+		// link's own URL rather than the internal player URL.
+		const handleNavigate = (nextUrl: string) => {
+			if (this.currentUrl !== url) return; // a different popover took over
+			if (nextUrl === loadUrl) return;
+			this.displayedUrl = nextUrl;
+			this.headerUrlEl?.setText(nextUrl);
+			this.headerUrlEl?.setAttribute("title", nextUrl);
+			this.updateNavState();
+		};
+
 		if ((mode === "auto" || mode === "webview") && Platform.isDesktopApp) {
-			this.renderer = renderWebview(
-				content,
-				url,
-				settings.webviewZoom,
-				fallBackToCard,
-				handleNavigate
-			);
+			this.renderer = renderWebview(content, loadUrl, {
+				zoom: settings.webviewZoom,
+				muted: this.muted,
+				volume: settings.mediaVolume,
+				onFail: fallBackToCard,
+				onNavigate: handleNavigate,
+				onMediaPlaying: () => {
+					if (this.currentUrl !== url) return;
+					this.audioActive = true;
+					this.updateMuteButton();
+				},
+			});
 		} else if (mode === "reader") {
 			this.renderer = renderReader(content, url, fallBackToCard);
 		} else {
 			this.renderer = renderCard(content, url);
 		}
 		this.updateNavState();
+		this.updateMuteButton();
 
 		// zoom key may already be held down when the popover opens
 		if (this.zoomKeyHeld()) this.addZoomShield();
+	}
+
+	/** volume slider flyout, shown while hovering the speaker button or the
+	 *  flyout itself; the value is a single global setting, not per-site */
+	private buildVolumeFlyout(frame: HTMLElement, muteBtn: HTMLElement): void {
+		const flyout = frame.createDiv({ cls: "hoverlay-volume-flyout is-hidden" });
+		this.volumeFlyoutEl = flyout;
+
+		// the visible control is drawn with plain divs so no app or theme
+		// range-input styling can interfere; the input below is only an
+		// invisible interaction layer
+		const track = flyout.createDiv({ cls: "hoverlay-volume-track" });
+		track.createDiv({ cls: "hoverlay-volume-fill" });
+		track.createDiv({ cls: "hoverlay-volume-thumb" });
+
+		const slider = flyout.createEl("input", {
+			cls: "hoverlay-volume-slider",
+			attr: {
+				type: "range",
+				min: "0",
+				max: "100",
+				step: "5",
+				"aria-label": "Media volume",
+			},
+		});
+		slider.value = String(Math.round(this.plugin.settings.mediaVolume * 100));
+
+		// drives the fill height and thumb position of the drawn control
+		const updateFill = () =>
+			flyout.style.setProperty("--hoverlay-volume-fill", `${slider.value}%`);
+		updateFill();
+
+		slider.addEventListener("input", () => {
+			updateFill();
+			const volume = Number(slider.value) / 100;
+			this.plugin.settings.mediaVolume = volume;
+			this.renderer?.setVolume?.(volume);
+			// adjusting volume is an intent to hear it
+			if (this.muted && volume > 0) {
+				this.muted = false;
+				this.renderer?.setMuted?.(false);
+			}
+			this.updateMuteButton();
+		});
+		// persist once per adjustment, not on every drag tick
+		slider.addEventListener("change", () => void this.plugin.saveSettings());
+
+		const showFlyout = () => {
+			if (this.volumeFlyoutTimer !== null) {
+				window.clearTimeout(this.volumeFlyoutTimer);
+				this.volumeFlyoutTimer = null;
+			}
+			if (!this.renderer?.setVolume || muteBtn.hasClass("is-hidden")) return;
+			flyout.removeClass("is-hidden");
+			// anchor centered under the speaker button; its position shifts as
+			// header buttons come and go, so compute at show time
+			const frameRect = frame.getBoundingClientRect();
+			const buttonRect = muteBtn.getBoundingClientRect();
+			const left =
+				buttonRect.left - frameRect.left + buttonRect.width / 2 - flyout.offsetWidth / 2;
+			const maxLeft = frame.clientWidth - flyout.offsetWidth - 4;
+			flyout.style.left = `${Math.max(4, Math.min(maxLeft, left))}px`;
+		};
+		const scheduleFlyoutHide = () => {
+			if (this.volumeFlyoutTimer !== null) window.clearTimeout(this.volumeFlyoutTimer);
+			this.volumeFlyoutTimer = window.setTimeout(() => {
+				this.volumeFlyoutTimer = null;
+				flyout.addClass("is-hidden");
+			}, 250);
+		};
+
+		muteBtn.addEventListener("mouseenter", showFlyout);
+		muteBtn.addEventListener("mouseleave", scheduleFlyoutHide);
+		flyout.addEventListener("mouseenter", showFlyout);
+		flyout.addEventListener("mouseleave", scheduleFlyoutHide);
+	}
+
+	private togglePin(): void {
+		this.pinned = !this.pinned;
+		if (this.pinned) this.cancelHide();
+		const button = this.pinBtnEl;
+		if (!button) return;
+		setIcon(button, this.pinned ? "pin-off" : "pin");
+		button.toggleClass("is-active", this.pinned);
+		const label = this.pinned
+			? "Unpin (resume closing when the pointer leaves)"
+			: "Pin (stay open until Escape or a click elsewhere)";
+		button.setAttribute("aria-label", label);
+		button.setAttribute("title", label);
+	}
+
+	private toggleMute(): void {
+		if (!this.renderer?.setMuted) return;
+		this.muted = !this.muted;
+		this.renderer.setMuted(this.muted);
+		this.updateMuteButton();
+	}
+
+	/** embeds always show the speaker (media is the point); ordinary pages
+	 *  only once the guest actually starts playing something */
+	private updateMuteButton(): void {
+		const button = this.muteBtnEl;
+		if (!button) return;
+		const relevant = !!this.renderer?.setMuted && (this.isEmbed || this.audioActive);
+		button.toggleClass("is-hidden", !relevant);
+		const icon = this.muted
+			? "volume-x"
+			: this.plugin.settings.mediaVolume < 0.5
+				? "volume-1"
+				: "volume-2";
+		setIcon(button, icon);
+		const label = this.muted ? "Unmute" : "Mute";
+		button.setAttribute("aria-label", label);
+		button.setAttribute("title", label);
 	}
 
 	/** show the history buttons only for renderers that have a history, and
@@ -529,6 +676,19 @@ export class PopoverManager {
 
 		const addAction = (icon: string, label: string, onClick: () => void): HTMLElement =>
 			iconButton(actions, icon, label, onClick);
+
+		// per-popover pin: hover dismissal off until unpinned, Escape/X/click
+		// outside still close. Redundant when the global mode is already sticky.
+		if (this.plugin.settings.stickyMode === "hover") {
+			this.pinBtnEl = addAction("pin", "Pin (stay open until Escape or a click elsewhere)", () =>
+				this.togglePin()
+			);
+		}
+
+		// mute toggle; hidden until audio is relevant (see updateMuteButton)
+		this.muteBtnEl = addAction("volume-x", "Unmute", () => this.toggleMute());
+		this.muteBtnEl.addClass("is-hidden");
+		this.buildVolumeFlyout(parent, this.muteBtnEl);
 
 		const maximizeBtn = addAction("maximize-2", "Maximize", () => {
 			this.toggleMaximize();
@@ -842,6 +1002,7 @@ export class PopoverManager {
 	// ---- timers / teardown ----
 
 	private scheduleHide(): void {
+		if (this.pinned) return; // pinned popovers close via Escape, X or click outside
 		if (this.maximized) return; // see toggleMaximize: hover dismissal is suspended
 		if (this.resizing || this.dragging) return; // never close mid-drag
 		this.cancelHide();
@@ -881,6 +1042,16 @@ export class PopoverManager {
 		this.navEl = null;
 		this.navBackEl = null;
 		this.navForwardEl = null;
+		this.muteBtnEl = null;
+		this.pinBtnEl = null;
+		this.pinned = false;
+		this.isEmbed = false;
+		this.audioActive = false;
+		if (this.volumeFlyoutTimer !== null) {
+			window.clearTimeout(this.volumeFlyoutTimer);
+			this.volumeFlyoutTimer = null;
+		}
+		this.volumeFlyoutEl = null;
 		this.maximized = false;
 		this.savedRect = null;
 		this.resizing = false;

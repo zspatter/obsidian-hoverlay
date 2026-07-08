@@ -76,12 +76,17 @@ export function isHostBlocked(hostname: string, blocked: string[]): boolean {
 	return blocked.some((entry) => host === entry || host.endsWith("." + entry));
 }
 
+/** per-domain entries accept every render mode plus "embed", which forces
+ *  the embedded-player transform for that host even when the global embed
+ *  toggle is off */
+export type DomainMode = RenderMode | "embed";
+
 export interface DomainModeRule {
 	host: string;
-	mode: RenderMode;
+	mode: DomainMode;
 }
 
-const RENDER_MODES = new Set<string>(["auto", "webview", "reader", "card"]);
+const DOMAIN_MODES = new Set<string>(["auto", "webview", "reader", "card", "embed"]);
 
 /** parse "host: mode" lines; unknown modes and malformed lines are ignored */
 export function parseDomainModes(text: string): DomainModeRule[] {
@@ -91,14 +96,14 @@ export function parseDomainModes(text: string): DomainModeRule[] {
 		if (separator === -1) continue;
 		const host = line.slice(0, separator).trim().toLowerCase();
 		const mode = line.slice(separator + 1).trim().toLowerCase();
-		if (!host || !RENDER_MODES.has(mode)) continue;
-		rules.push({ host, mode: mode as RenderMode });
+		if (!host || !DOMAIN_MODES.has(mode)) continue;
+		rules.push({ host, mode: mode as DomainMode });
 	}
 	return rules;
 }
 
 /** subdomains match their parent entries; the most specific entry wins */
-export function matchDomainMode(hostname: string, rules: DomainModeRule[]): RenderMode | null {
+export function matchDomainMode(hostname: string, rules: DomainModeRule[]): DomainMode | null {
 	const host = hostname.toLowerCase();
 	let best: DomainModeRule | null = null;
 	for (const rule of rules) {
