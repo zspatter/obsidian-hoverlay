@@ -28,14 +28,18 @@ export type ObsidianWindow = {
 
 /** park the real pointer on a neutral element: moveTo an element the
  *  pointer already occupies fires no mouseover, so consecutive hover tests
- *  need the pointer to actually leave and re-enter the link */
-export async function parkPointer(): Promise<void> {
-	await $(".inline-title").moveTo();
+ *  need the pointer to actually leave and re-enter the link. The default
+ *  target exists in markdown views; other view types pass their own. */
+export async function parkPointer(selector = ".inline-title"): Promise<void> {
+	await $(selector).moveTo();
 }
 
 /** hover an element and wait for the popover (default hover delay is 400ms) */
-export async function hoverAndWaitForPopover(selector: string): Promise<void> {
-	await parkPointer();
+export async function hoverAndWaitForPopover(
+	selector: string,
+	park = ".inline-title"
+): Promise<void> {
+	await parkPointer(park);
 	await $(selector).moveTo();
 	await $(POPOVER).waitForExist({ timeout: 8000 });
 }

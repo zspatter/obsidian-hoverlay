@@ -35,7 +35,24 @@ const RESOLVE_CACHE_MS = 250;
 
 const px = (value: number) => `${value}px`;
 
-const viewportSize = (): Size => ({ width: window.innerWidth, height: window.innerHeight });
+const viewportSize = (win: Window): Size => ({
+	width: win.innerWidth,
+	height: win.innerHeight,
+});
+
+/** the element under an event; constructor identity (instanceof, and
+ *  Obsidian's instanceOf on older versions) fails across pop-out windows
+ *  and adopted nodes, so duck-type on nodeType instead */
+function eventElement(target: EventTarget | null): Element | null {
+	const node = target as Node | null;
+	return node && node.nodeType === 1 ? (node as Element) : null;
+}
+
+/** anchors are hovered elements or bare screen rects (cursor command);
+ *  a cross-window-safe way to tell them apart */
+function isAnchorElement(anchor: HTMLElement | DOMRect): anchor is HTMLElement {
+	return "ownerDocument" in anchor;
+}
 
 function iconButton(
 	parent: HTMLElement,
@@ -117,8 +134,8 @@ export class PopoverManager {
 	// ---- event entry points (wired in main.ts) ----
 
 	onMouseOver(evt: MouseEvent): void {
-		const target = evt.target;
-		if (!(target instanceof Element)) return;
+		const target = eventElement(evt.target);
+		if (!target) return;
 
 		// keep the popover alive while the pointer is inside it or its handles
 		if (this.popoverEl && this.popoverEl.contains(target)) {
@@ -182,7 +199,7 @@ export class PopoverManager {
 
 	onMouseDown(evt: MouseEvent): void {
 		if (!this.popoverEl) return;
-		const inside = evt.target instanceof Node && this.popoverEl.contains(evt.target);
+		const inside = this.popoverEl.contains(evt.target as Node | null);
 		// mouse back/forward buttons: inside they drive the preview's history
 		// (suppress Obsidian's note navigation), outside they are note
 		// navigation and must not count as a dismissal click
@@ -203,7 +220,7 @@ export class PopoverManager {
 		if (evt.button !== 3 && evt.button !== 4) return;
 		const nav = this.renderer?.navigation;
 		if (!this.popoverEl || !nav) return;
-		if (!(evt.target instanceof Node) || !this.popoverEl.contains(evt.target)) return;
+		if (!this.popoverEl.contains(evt.target as Node | null)) return;
 		evt.preventDefault();
 		evt.stopPropagation();
 		if (!navigate) return;
@@ -215,7 +232,7 @@ export class PopoverManager {
 		// scrolling the note under an open popover leaves it floating over stale
 		// content, so close; scrolling inside the popover is the popover's business
 		if (!this.popoverEl) return;
-		if (evt.target instanceof Node && this.popoverEl.contains(evt.target)) return;
+		if (this.popoverEl.contains(evt.target as Node | null)) return;
 		this.hide();
 	}
 
@@ -336,8 +353,14 @@ export class PopoverManager {
 			isDesktop: Platform.isDesktopApp,
 		});
 
-		const size = this.popoverSizeFor(presentation);
-		const popover = this.buildShell(url, size);
+		// the popover lives in the window that was hovered, not necessarily
+		// the main one; rect anchors (cursor command) come from the focused
+		// window, which is what activeDocument tracks
+		const doc = isAnchorElement(anchor) ? anchor.ownerDocument : activeDocument;
+		const win = doc.defaultView ?? activeWindow;
+
+		const size = this.popoverSizeFor(presentation, win);
+		const popover = this.buildShell(url, size, doc);
 		this.placePopover(popover, anchor, size);
 		this.addResizeHandles(popover);
 		this.attachZoomWheel(popover);
@@ -355,11 +378,11 @@ export class PopoverManager {
 	 *  narrower than the default width, which would push the header controls
 	 *  off-screen), then trimmed to an embed's natural content size so
 	 *  fixed-height cards and letterboxed players don't sit in whitespace */
-	private popoverSizeFor(presentation: Presentation): Size {
+	private popoverSizeFor(presentation: Presentation, win: Window): Size {
 		const { settings } = this.plugin;
 		const size = clampSizeToViewport(
 			{ width: settings.popoverWidth, height: settings.popoverHeight },
-			viewportSize()
+			viewportSize(win)
 		);
 		const hint = presentation.embedHint;
 		if (!hint) return size;
@@ -379,12 +402,17 @@ export class PopoverManager {
 		return { width: fitted.width, height: fitted.height + chrome };
 	}
 
+	/** the window hosting the open popover, for viewport math and timers */
+	private hostWin(): Window {
+		return this.popoverEl?.ownerDocument.defaultView ?? activeWindow;
+	}
+
 	/** popover, frame, header and content elements, at the given size */
-	private buildShell(url: string, size: Size): HTMLElement {
+	private buildShell(url: string, size: Size, doc: Document): HTMLElement {
 		// the popover itself has visible overflow so the resize handles can
 		// overhang its bounds (pointer overshoot still counts as "inside");
 		// the frame provides the clipped, rounded visual box
-		const popover = activeDocument.body.createDiv({ cls: "hoverlay-popover" });
+		const popover = doc.body.createDiv({ cls: "hoverlay-popover" });
 		popover.style.width = px(size.width);
 		popover.style.height = px(size.height);
 		this.popoverEl = popover;
@@ -401,11 +429,11 @@ export class PopoverManager {
 		anchor: HTMLElement | DOMRect,
 		size: Size
 	): void {
-		const rect = anchor instanceof HTMLElement ? anchor.getBoundingClientRect() : anchor;
+		const rect = isAnchorElement(anchor) ? anchor.getBoundingClientRect() : anchor;
 		const pos = popoverPosition(
 			{ left: rect.left, top: rect.top, bottom: rect.bottom },
 			size,
-			viewportSize()
+			viewportSize(this.hostWin())
 		);
 		popover.style.left = px(pos.left);
 		popover.style.top = px(pos.top);
@@ -433,7 +461,7 @@ export class PopoverManager {
 			this.suspendHoverUntil = 0;
 		});
 		popover.addEventListener("mouseleave", () => this.scheduleHide());
-		if (anchor instanceof HTMLElement) {
+		if (isAnchorElement(anchor)) {
 			anchor.addEventListener("mouseleave", () => this.scheduleHide(), { once: true });
 		}
 	}
@@ -656,10 +684,7 @@ export class PopoverManager {
 			const popover = this.popoverEl;
 			const frame = this.frameEl;
 			if (!popover || !frame || this.maximized || evt.button !== 0) return;
-			if (
-				evt.target instanceof Element &&
-				evt.target.closest(".hoverlay-header-btn, .hoverlay-zoom-badge")
-			) {
+			if (eventElement(evt.target)?.closest(".hoverlay-header-btn, .hoverlay-zoom-badge")) {
 				return;
 			}
 			evt.preventDefault();
@@ -681,7 +706,7 @@ export class PopoverManager {
 					{ x: move.clientX, y: move.clientY },
 					grabOffset,
 					{ width: popover.offsetWidth, height: popover.offsetHeight },
-					viewportSize()
+					viewportSize(this.hostWin())
 				);
 				popover.style.left = px(pos.left);
 				popover.style.top = px(pos.top);
@@ -760,7 +785,7 @@ export class PopoverManager {
 				width: popover.style.width,
 				height: popover.style.height,
 			};
-			const rect = maximizedRect(viewportSize());
+			const rect = maximizedRect(viewportSize(this.hostWin()));
 			popover.style.left = px(rect.left);
 			popover.style.top = px(rect.top);
 			popover.style.width = px(rect.width);
@@ -935,7 +960,7 @@ export class PopoverManager {
 				edges,
 				startRect,
 				{ x: move.clientX - startPointer.x, y: move.clientY - startPointer.y },
-				viewportSize()
+				viewportSize(this.hostWin())
 			);
 			popover.style.left = px(next.left);
 			popover.style.top = px(next.top);

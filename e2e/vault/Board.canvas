@@ -1,0 +1,14 @@
+{
+	"nodes": [
+		{
+			"id": "textcard01",
+			"type": "text",
+			"text": "Canvas link: [Example](https://example.com/)",
+			"x": -220,
+			"y": -80,
+			"width": 440,
+			"height": 160
+		}
+	],
+	"edges": []
+}

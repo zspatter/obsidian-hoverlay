@@ -28,18 +28,61 @@ export interface ResolvedLink {
  *   link covering it. This handles live preview's folded [text](url) links
  *   (the URL never exists in the DOM) and plain untokenized text alike.
  */
+/**
+ * Nothing in this module may compare constructors (instanceof, or Obsidian's
+ * instanceOf): pop-out windows hold a mix of nodes adopted from the main
+ * document and nodes built by the pop-out's own realm, so identity checks
+ * pass or fail per node. Selectors like closest() already guarantee the
+ * element kind; nodeType covers the rest.
+ */
 export function resolveLinkAt(
 	el: Element,
 	evt: MouseEvent,
 	normalize: Normalizer
 ): ResolvedLink | null {
 	const anchor = el.closest("a");
-	if (anchor instanceof HTMLAnchorElement) {
+	if (anchor) {
 		if (anchor.classList.contains("internal-link")) return null;
 		const url = normalize(anchor.getAttribute("href") ?? "");
 		return url ? { url, anchor } : null;
 	}
-	return resolveInEditor(el, evt, normalize);
+	return resolveInEditor(el, evt, normalize) ?? resolveThroughCanvasBlocker(el, evt, normalize);
+}
+
+/**
+ * Unfocused canvas cards cover their rendered content with a blocker div
+ * that receives every mouse event, so links inside never become hover
+ * targets themselves. When the pointer sits on a blocker, hit-test the
+ * covered card for an anchor under the pointer; cards left in editing
+ * state keep a CodeMirror instance behind the blocker instead.
+ */
+function resolveThroughCanvasBlocker(
+	el: Element,
+	evt: MouseEvent,
+	normalize: Normalizer
+): ResolvedLink | null {
+	if (!el.classList.contains("canvas-node-content-blocker")) return null;
+	const node = el.closest(".canvas-node");
+	if (!node) return null;
+
+	for (const anchor of Array.from(node.querySelectorAll("a"))) {
+		if (anchor.classList.contains("internal-link")) continue;
+		// getClientRects, not the bounding box: a wrapped inline link's
+		// bounding box covers text that isn't part of the link
+		const hit = Array.from(anchor.getClientRects()).some(
+			(rect) =>
+				evt.clientX >= rect.left &&
+				evt.clientX <= rect.right &&
+				evt.clientY >= rect.top &&
+				evt.clientY <= rect.bottom
+		);
+		if (!hit) continue;
+		const url = normalize(anchor.getAttribute("href") ?? "");
+		return url ? { url, anchor } : null;
+	}
+
+	const editorEl = node.querySelector(".cm-editor");
+	return editorEl ? resolveInEditor(editorEl, evt, normalize) : null;
 }
 
 function resolveInEditor(
@@ -47,8 +90,8 @@ function resolveInEditor(
 	evt: MouseEvent,
 	normalize: Normalizer
 ): ResolvedLink | null {
-	const editorEl = el.closest(".cm-editor");
-	if (!(editorEl instanceof HTMLElement)) return null;
+	const editorEl = el.closest(".cm-editor") as HTMLElement | null;
+	if (!editorEl) return null;
 
 	const view = EditorView.findFromDOM(editorEl);
 	if (!view) return null;
@@ -63,16 +106,8 @@ function resolveInEditor(
 	const url = normalize(rawLink);
 	if (!url) return null;
 
-	const token = el.closest(".cm-url, .cm-link, .cm-underline");
-	// instanceOf, not instanceof: elements from a pop-out window are built by
-	// that window's constructors, so identity checks fail across windows
-	const anchorEl =
-		token && token.instanceOf(HTMLElement)
-			? token
-			: el.instanceOf(HTMLElement)
-				? el
-				: editorEl;
-	return { url, anchor: anchorEl };
+	const token = el.closest(".cm-url, .cm-link, .cm-underline") as HTMLElement | null;
+	return { url, anchor: token ?? (el as HTMLElement) };
 }
 
 /** the link under the editor cursor plus its screen rect, for the

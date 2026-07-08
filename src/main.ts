@@ -26,43 +26,54 @@ export default class HoverlayPlugin extends Plugin {
 			},
 		});
 
+		// every window needs its own listeners: pop-outs have their own
+		// document, and events there never reach the main window's
+		this.registerWindowListeners(activeDocument, activeWindow);
+		this.registerEvent(
+			this.app.workspace.on("window-open", (ww) =>
+				this.registerWindowListeners(ww.doc, ww.win)
+			)
+		);
+	}
+
+	private registerWindowListeners(doc: Document, win: Window): void {
 		this.registerDomEvent(
-			activeDocument,
+			doc,
 			"mouseover",
 			(evt: MouseEvent) => this.popovers.onMouseOver(evt),
 			{ capture: true }
 		);
-		this.registerDomEvent(activeDocument, "keydown", (evt: KeyboardEvent) =>
+		this.registerDomEvent(doc, "keydown", (evt: KeyboardEvent) =>
 			this.popovers.onKeyDown(evt)
 		);
-		this.registerDomEvent(activeDocument, "keyup", (evt: KeyboardEvent) =>
+		this.registerDomEvent(doc, "keyup", (evt: KeyboardEvent) =>
 			this.popovers.onKeyUp(evt)
 		);
 		this.registerDomEvent(
-			activeDocument,
+			doc,
 			"mousedown",
 			(evt: MouseEvent) => this.popovers.onMouseDown(evt),
 			{ capture: true }
 		);
 		this.registerDomEvent(
-			activeDocument,
+			doc,
 			"wheel",
 			(evt: WheelEvent) => this.popovers.onWheel(evt),
 			{ capture: true, passive: true }
 		);
-		this.registerDomEvent(activeWindow, "blur", () => this.popovers.onWindowBlur());
+		this.registerDomEvent(win, "blur", () => this.popovers.onWindowBlur());
 
 		// mouse back/forward buttons over the popover drive its history; both
 		// pointerup and mouseup are intercepted so Obsidian's own note
 		// navigation doesn't also fire (navigation triggers once, on pointerup)
 		this.registerDomEvent(
-			activeDocument,
+			doc,
 			"pointerup",
 			(evt: PointerEvent) => this.popovers.onAuxPointer(evt, true),
 			{ capture: true }
 		);
 		this.registerDomEvent(
-			activeDocument,
+			doc,
 			"mouseup",
 			(evt: MouseEvent) => this.popovers.onAuxPointer(evt, false),
 			{ capture: true }
