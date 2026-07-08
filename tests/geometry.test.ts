@@ -12,8 +12,8 @@ import {
 	maximizedRect,
 	popoverPosition,
 	resizeRect,
-} from "./geometry";
-import type { EdgeSet } from "./geometry";
+} from "../src/geometry";
+import type { EdgeSet } from "../src/geometry";
 
 const VIEWPORT = { width: 1280, height: 800 };
 const SIZE = { width: 480, height: 340 };

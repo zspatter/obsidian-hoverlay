@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { choosePresentation } from "./presentation";
-import { parseDomainModes } from "./rules";
-import type { PresentationInput } from "./presentation";
-import type { RenderMode } from "./rules";
+import { choosePresentation } from "../src/presentation";
+import { parseDomainModes } from "../src/rules";
+import type { PresentationInput } from "../src/presentation";
+import type { RenderMode } from "../src/rules";
 
 const EMBEDDABLE = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
 const EMBED_RESULT = "https://www.youtube.com/embed/dQw4w9WgXcQ";

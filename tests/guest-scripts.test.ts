@@ -5,7 +5,7 @@ import {
 	applyVolumeJs,
 	guestBootstrapJs,
 	scrollbarCss,
-} from "./guest-scripts";
+} from "../src/guest-scripts";
 
 describe("applyVolumeJs", () => {
 	it("embeds the clamped level for any input", () => {

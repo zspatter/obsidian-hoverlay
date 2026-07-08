@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findLinkAtOffset, normalizeUrl } from "./links";
+import { findLinkAtOffset, normalizeUrl } from "../src/links";
 
 describe("normalizeUrl", () => {
 	it("passes through http/https URLs", () => {

@@ -7,8 +7,8 @@ import {
 	parseDomainModes,
 	resolveZoomModifier,
 	zoomConflictsWithTriggers,
-} from "./rules";
-import type { ModifierKey, ZoomModifier } from "./rules";
+} from "../src/rules";
+import type { ModifierKey, ZoomModifier } from "../src/rules";
 
 const ALL_MODIFIERS: ModifierKey[] = ["ctrl", "alt", "shift", "meta"];
 const ZOOM_OPTIONS: ZoomModifier[] = ["ctrl", "alt", "shift"];

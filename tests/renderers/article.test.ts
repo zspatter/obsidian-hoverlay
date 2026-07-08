@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { absolutizeArticleUrls, sanitizeArticleHtml } from "./article";
+import { absolutizeArticleUrls, sanitizeArticleHtml } from "../../src/renderers/article";
 
 const BASE = "https://example.com/blog/post";
 

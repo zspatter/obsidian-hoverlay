@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { parseMetadata } from "./metadata";
+import { parseMetadata } from "../src/metadata";
 
 const URL_UNDER_TEST = "https://example.com/articles/post";
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveEmbedUrl } from "./embeds";
+import { resolveEmbedUrl } from "../src/embeds";
 
 describe("resolveEmbedUrl", () => {
 	it("transforms YouTube watch URLs in all their forms", () => {

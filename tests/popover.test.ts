@@ -6,11 +6,11 @@ vi.mock("@codemirror/view", () => ({
 	EditorView: { findFromDOM: () => null },
 }));
 
-import "./testing/obsidian-dom";
-import { PopoverManager } from "./popover";
-import { getBlockedHosts } from "./rules";
-import type HoverlayPlugin from "./main";
-import type { HoverlaySettings } from "./settings";
+import "./support/obsidian-dom";
+import { PopoverManager } from "../src/popover";
+import { getBlockedHosts } from "../src/rules";
+import type HoverlayPlugin from "../src/main";
+import type { HoverlaySettings } from "../src/settings";
 
 function makePlugin(overrides: Partial<HoverlaySettings> = {}): HoverlayPlugin {
 	const settings: HoverlaySettings = {
