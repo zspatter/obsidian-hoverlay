@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  # weekly regression run: unit/component tiers now, and once the e2e tier
+  # lands it will pull the latest Obsidian, catching upstream breakage
+  # between our own commits
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write # keepalive: re-enables the schedule on quiet repos
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck and build
+        run: npm run build
+      - name: Unit and component tests
+        run: npm test
+      # GitHub suspends scheduled workflows after 60 days without repo
+      # activity; this keeps the weekly regression run alive
+      - uses: gautamkrishnar/keepalive-workflow@v2
+        if: github.event_name == 'schedule'
