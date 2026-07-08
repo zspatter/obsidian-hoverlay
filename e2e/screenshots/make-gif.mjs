@@ -13,9 +13,11 @@ const { GIFEncoder, quantize, applyPalette } = gifenc;
 
 const FRAMES = "e2e/screenshots/frames";
 const OUT = "docs/screenshots/hover.gif";
-const TARGET_WIDTH = 800;
-const FRAME_DELAY_MS = 300;
-const END_HOLD_MS = 1800; // linger on the finished preview before looping
+// native resolution: our nearest-neighbor downscale blurred UI text badly;
+// browsers scale the rendered gif far better than we can
+const TARGET_WIDTH = null;
+const FRAME_DELAY_MS = 320;
+const END_HOLD_MS = 2000; // linger on the finished preview before looping
 
 if (!existsSync(FRAMES)) {
 	console.log("no frames captured; skipping gif assembly");
@@ -54,7 +56,9 @@ function scale(png, targetWidth) {
 const gif = GIFEncoder();
 for (const [index, file] of files.entries()) {
 	const png = PNG.sync.read(readFileSync(path.join(FRAMES, file)));
-	const frame = scale(png, TARGET_WIDTH);
+	const frame = TARGET_WIDTH
+		? scale(png, TARGET_WIDTH)
+		: { width: png.width, height: png.height, data: new Uint8ClampedArray(png.data) };
 	const palette = quantize(frame.data, 256);
 	const indexed = applyPalette(frame.data, palette);
 	const delay = index === files.length - 1 ? END_HOLD_MS : FRAME_DELAY_MS;

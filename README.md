@@ -76,9 +76,9 @@ CI gates every push and pull request with the unit/component tiers (`ci.yml`) an
 
 ## Roadmap
 
-- [ ] Canvas card links
-- [ ] Persistent metadata cache
-- [ ] Additional embed providers on demand
+- [ ] Hover previews inside Canvas: canvas cards render links outside the markdown views Hoverlay currently watches
+- [ ] Additional embed providers on request (the transform table makes new ones cheap)
+- [ ] Wrap embeds in a framed host page, which may unlock playback for label-restricted videos that refuse the bare embed player
 
 ## License
 

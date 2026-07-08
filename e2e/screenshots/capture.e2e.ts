@@ -16,6 +16,7 @@ const FRAMES = "e2e/screenshots/frames";
 const ARTICLE_LINK = '.markdown-preview-view a[href^="https://en.wikipedia.org"]';
 const VIDEO_LINK = '.markdown-preview-view a[href^="https://www.youtube.com"]';
 const SONG_LINK = '.markdown-preview-view a[href^="https://open.spotify.com"]';
+const HOMEPAGE_LINK = '.markdown-preview-view a[href="https://obsidian.md/"]';
 
 describe("capture screenshots", function () {
 	let defaults: string;
@@ -40,16 +41,60 @@ describe("capture screenshots", function () {
 		await restoreSettings(defaults);
 	});
 
-	it("hover action frames + hero shot", async function () {
-		// frames for the README gif: park, approach, dwell, popover, page paint
+	it("hover action frames for the gif", async function () {
+		// act 1: park, approach, dwell, popover, page paint
 		await parkPointer();
 		await snapFrame();
 		await $(ARTICLE_LINK).moveTo();
-		for (let i = 0; i < 14; i++) {
+		for (let i = 0; i < 9; i++) {
 			await snapFrame();
 			await browser.pause(280);
 		}
-		// the popover is open and painted now: reuse it as the hero shot
+
+		const webview = await $(".hoverlay-webview");
+
+		// act 2: scroll the article inside the guest
+		for (let i = 0; i < 3; i++) {
+			await browser.action("wheel").scroll({ origin: webview, deltaY: 420 }).perform();
+			await browser.pause(250);
+			await snapFrame();
+		}
+
+		// act 3: drag a corner to grow the popover. The southwest corner grows
+		// leftward into open note space; the southeast one would walk the
+		// pointer out of the window (move target out of bounds)
+		const corner = await $(".hoverlay-resize-sw");
+		await browser
+			.action("pointer")
+			.move({ origin: corner })
+			.down()
+			.move({ origin: "pointer", x: -50, y: 20 })
+			.move({ origin: "pointer", x: -50, y: 20 })
+			.up()
+			.perform();
+		await browser.pause(250);
+		await snapFrame();
+
+		// act 4: drag the header to reposition (grab left of the buttons)
+		const header = await $(".hoverlay-header");
+		await browser
+			.action("pointer")
+			.move({ origin: header, x: -120, y: 0 })
+			.down()
+			.move({ origin: "pointer", x: -70, y: -45 })
+			.move({ origin: "pointer", x: -70, y: -45 })
+			.up()
+			.perform();
+		await browser.pause(250);
+		await snapFrame();
+		await snapFrame(); // hold the final state a beat before the loop restarts
+
+		await dismissPopover();
+	});
+
+	it("hero shot", async function () {
+		await hoverAndWaitForPopover(HOMEPAGE_LINK);
+		await browser.pause(3500); // let the page paint
 		await browser.saveScreenshot(`${OUT}/hover-preview.png`);
 		await dismissPopover();
 	});
