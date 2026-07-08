@@ -39,7 +39,44 @@ export function resolveLinkAt(
 		const url = normalize(anchor.getAttribute("href") ?? "");
 		return url ? { url, anchor } : null;
 	}
-	return resolveInEditor(el, evt, normalize);
+	return resolveInEditor(el, evt, normalize) ?? resolveThroughCanvasBlocker(el, evt, normalize);
+}
+
+/**
+ * Unfocused canvas cards cover their rendered content with a blocker div
+ * that receives every mouse event, so links inside never become hover
+ * targets themselves. When the pointer sits on a blocker, hit-test the
+ * covered card for an anchor under the pointer; cards left in editing
+ * state keep a CodeMirror instance behind the blocker instead.
+ */
+function resolveThroughCanvasBlocker(
+	el: Element,
+	evt: MouseEvent,
+	normalize: Normalizer
+): ResolvedLink | null {
+	if (!el.classList.contains("canvas-node-content-blocker")) return null;
+	const node = el.closest(".canvas-node");
+	if (!node) return null;
+
+	for (const anchor of Array.from(node.querySelectorAll("a"))) {
+		if (anchor.classList.contains("internal-link")) continue;
+		if (!anchor.instanceOf(HTMLElement)) continue;
+		// getClientRects, not the bounding box: a wrapped inline link's
+		// bounding box covers text that isn't part of the link
+		const hit = Array.from(anchor.getClientRects()).some(
+			(rect) =>
+				evt.clientX >= rect.left &&
+				evt.clientX <= rect.right &&
+				evt.clientY >= rect.top &&
+				evt.clientY <= rect.bottom
+		);
+		if (!hit) continue;
+		const url = normalize(anchor.getAttribute("href") ?? "");
+		return url ? { url, anchor } : null;
+	}
+
+	const editorEl = node.querySelector(".cm-editor");
+	return editorEl ? resolveInEditor(editorEl, evt, normalize) : null;
 }
 
 function resolveInEditor(

@@ -26,7 +26,7 @@ Existing hover-preview plugins render pages in an `<iframe>`. Any site that send
 
 ![A video playing in the popover with the volume flyout open](docs/screenshots/media-browser.png)
 
-- **Hover** an external link (optionally behind a modifier combination), wait the configured delay, get a preview. Works in reading view, live preview and source mode; editor links are resolved from the document itself, so live preview's folded `[text](url)` links work.
+- **Hover** an external link (optionally behind a modifier combination), wait the configured delay, get a preview. Works in reading view, live preview, source mode and Canvas text cards; editor links are resolved from the document itself, so live preview's folded `[text](url)` links work.
 - **Header controls:** back/forward history, the current URL, maximize/restore, pin (stay open until Escape or a click elsewhere), mute with a volume slider on hover, open in browser, close.
 - **Move and size it:** drag the header to reposition; drag any edge or corner to resize (optionally remembered as the new default).
 - **Zoom:** hold the zoom key and scroll over the preview; a percentage badge appears, and clicking it resets to 100%.
@@ -76,7 +76,6 @@ CI gates every push and pull request with the unit/component tiers (`ci.yml`) an
 
 ## Roadmap
 
-- [ ] Hover previews inside Canvas: canvas cards render links outside the markdown views Hoverlay currently watches
 - [ ] Additional embed providers on request (the transform table makes new ones cheap)
 - [ ] Wrap embeds in a framed host page, which may unlock playback for label-restricted videos that refuse the bare embed player
 
