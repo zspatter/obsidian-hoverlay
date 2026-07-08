@@ -1,0 +1,39 @@
+# Runs on version tags (Obsidian requires the tag to equal manifest.json's
+# version exactly, no v prefix). Builds the plugin and creates a DRAFT
+# GitHub release with the three files Obsidian installs from; review the
+# generated notes and publish by hand.
+#
+# No concurrency cancel-in-progress here on purpose: cancelling a
+# half-published release is worse than letting it finish.
+name: Release
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$tag" \
+            --draft \
+            --generate-notes \
+            main.js manifest.json styles.css

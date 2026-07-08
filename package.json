@@ -8,7 +8,9 @@
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"test": "vitest run",
 		"check:e2e": "tsc --noEmit -p e2e",
-		"test:e2e": "npm run build && wdio run ./e2e/wdio.conf.mts"
+		"test:e2e": "npm run build && wdio run ./e2e/wdio.conf.mts",
+		"shots": "npm run build && wdio run ./e2e/screenshots.conf.mts",
+		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
 	"keywords": [],
 	"author": "zspatter",
