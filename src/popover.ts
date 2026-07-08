@@ -2,10 +2,10 @@ import { Platform, setIcon } from "obsidian";
 import type { Editor } from "obsidian";
 import { EditorView } from "@codemirror/view";
 import type HoverlayPlugin from "./main";
-import { modifiersHeld, isHostBlocked, matchDomainMode, resolveZoomModifier } from "./rules";
+import { modifiersHeld, isHostBlocked, resolveZoomModifier } from "./rules";
 import type { ZoomModifier } from "./rules";
 import { normalizeUrl, findLinkAtOffset } from "./links";
-import { resolveEmbedUrl } from "./embeds";
+import { choosePresentation } from "./presentation";
 import { renderWebview } from "./renderers/webview";
 import { renderCard } from "./renderers/card";
 import { renderReader } from "./renderers/reader";
@@ -438,25 +438,16 @@ export class PopoverManager {
 			this.updateMuteButton();
 		};
 
-		// per-domain override beats the global preview mode
-		let host = "";
-		try {
-			host = new URL(url).hostname;
-		} catch {
-			// keep the global mode for unparseable hosts
-		}
-		const domainMode = host ? matchDomainMode(host, this.plugin.domainModeRules) : null;
-		const mode = (domainMode === "embed" ? "auto" : domainMode) ?? settings.renderMode;
-
-		// in auto mode, media links load the provider's embedded player: lighter
-		// than the full page, and embed pages are designed for exactly this.
-		// An explicit webview mode (global or per-domain) forces the raw page;
-		// a per-domain "embed" entry forces the player even with embeds off.
-		const embedWanted =
-			domainMode === "embed" || (mode === "auto" && settings.enableEmbeds);
-		const embedUrl = embedWanted ? resolveEmbedUrl(url) : null;
-		const loadUrl = embedUrl ?? url;
-		this.isEmbed = embedUrl !== null;
+		// mode/override/embed resolution lives in the pure presentation module
+		const presentation = choosePresentation({
+			url,
+			renderMode: settings.renderMode,
+			enableEmbeds: settings.enableEmbeds,
+			domainRules: this.plugin.domainModeRules,
+			isDesktop: Platform.isDesktopApp,
+		});
+		const loadUrl = presentation.loadUrl;
+		this.isEmbed = presentation.isEmbed;
 		// deliberate media playback should be audible; arbitrary pages stay
 		// muted so hover previews never blare autoplay noise
 		this.muted = !this.isEmbed;
@@ -474,7 +465,7 @@ export class PopoverManager {
 			this.updateNavState();
 		};
 
-		if ((mode === "auto" || mode === "webview") && Platform.isDesktopApp) {
+		if (presentation.kind === "webview") {
 			this.renderer = renderWebview(content, loadUrl, {
 				zoom: settings.webviewZoom,
 				muted: this.muted,
@@ -487,7 +478,7 @@ export class PopoverManager {
 					this.updateMuteButton();
 				},
 			});
-		} else if (mode === "reader") {
+		} else if (presentation.kind === "reader") {
 			this.renderer = renderReader(content, url, fallBackToCard);
 		} else {
 			this.renderer = renderCard(content, url);
