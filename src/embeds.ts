@@ -18,6 +18,10 @@ const SOUNDCLOUD_RESERVED = new Set([
 	"discover", "search", "stream", "upload", "you", "messages", "settings",
 	"charts", "people", "tags", "pages",
 ]);
+const DEEZER_TYPES = new Set(["track", "album", "playlist", "artist", "podcast", "episode"]);
+const STREAMABLE_RESERVED = new Set([
+	"login", "signup", "recover", "settings", "documentation", "pricing",
+]);
 
 function isHost(hostname: string, domain: string): boolean {
 	return hostname === domain || hostname.endsWith("." + domain);
@@ -115,6 +119,61 @@ export function resolveEmbed(raw: string): EmbedInfo | null {
 			return { url: `https://w.soundcloud.com/player/?url=${encodeURIComponent(track)}` };
 		}
 		return null;
+	}
+
+	if (host === "dailymotion.com" || host === "dai.ly") {
+		const id =
+			host === "dai.ly"
+				? segments[0]
+				: segments[0] === "video"
+					? segments[1]
+					: undefined;
+		return id && /^[a-z0-9]+$/i.test(id)
+			? {
+					url: `https://www.dailymotion.com/embed/video/${id}`,
+					aspectRatio: VIDEO_ASPECT,
+				}
+			: null;
+	}
+
+	if (host === "streamable.com") {
+		const [code] = segments;
+		return segments.length === 1 && /^[a-z0-9]+$/i.test(code) && !STREAMABLE_RESERVED.has(code)
+			? { url: `https://streamable.com/e/${code}`, aspectRatio: VIDEO_ASPECT }
+			: null;
+	}
+
+	if (host === "loom.com") {
+		return segments[0] === "share" && segments[1] && /^[0-9a-f]{16,}$/i.test(segments[1])
+			? { url: `https://www.loom.com/embed/${segments[1]}`, aspectRatio: VIDEO_ASPECT }
+			: null;
+	}
+
+	// Apple's embed players live on embed.* twins of the page host; a ?i=
+	// query pins a single song/episode, which gets the compact card
+	if (host === "music.apple.com" || host === "podcasts.apple.com") {
+		const type = segments[1]; // segments[0] is the storefront, e.g. "us"
+		const known =
+			host === "music.apple.com"
+				? type === "album" || type === "playlist" || type === "song"
+				: type === "podcast";
+		if (!known) return null;
+		const single = type === "song" || url.searchParams.has("i");
+		return {
+			url: `https://embed.${host}${url.pathname}${url.search}`,
+			// Apple's documented embed heights: 175 compact, 450 full card
+			height: single ? 175 : 450,
+		};
+	}
+
+	if (host === "deezer.com") {
+		const parts = [...segments];
+		if (parts[0] && /^[a-z]{2}$/.test(parts[0])) parts.shift(); // locale prefix
+		const [type, id] = parts;
+		return type && id && DEEZER_TYPES.has(type) && /^\d+$/.test(id)
+			? // the auto widget matches the page theme and fills its box: no hint
+				{ url: `https://widget.deezer.com/widget/auto/${type}/${id}` }
+			: null;
 	}
 
 	return null;
