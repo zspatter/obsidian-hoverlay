@@ -2,7 +2,7 @@
 	"id": "hoverlay",
 	"name": "Hoverlay",
 	"version": "0.1.0",
-	"minAppVersion": "1.5.0",
+	"minAppVersion": "1.5.3",
 	"description": "Preview links on hover in a floating window: live page, reader view, or metadata card, with embedded media players.",
 	"author": "zspatter",
 	"authorUrl": "https://github.com/zspatter",
