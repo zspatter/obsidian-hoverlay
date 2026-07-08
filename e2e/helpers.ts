@@ -7,7 +7,7 @@ export const HEADER_URL = ".hoverlay-header-url";
  *  pointer already occupies fires no mouseover, so consecutive hover tests
  *  need the pointer to actually leave and re-enter the link */
 export async function parkPointer(): Promise<void> {
-	await $(".markdown-preview-view h1").moveTo();
+	await $(".inline-title").moveTo();
 }
 
 /** hover an element and wait for the popover (default hover delay is 400ms) */

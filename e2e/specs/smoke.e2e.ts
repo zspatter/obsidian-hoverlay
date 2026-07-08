@@ -40,7 +40,7 @@ describe("Hoverlay smoke", function () {
 
 	it("opens a preview for the link under the editor cursor via the command", async function () {
 		await browser.executeObsidianCommand("markdown:toggle-preview"); // edit mode
-		await previewAtCursor(2, 12); // inside [Example](https://example.com/)
+		await previewAtCursor(0, 12); // inside [Example](https://example.com/)
 		await expect($(HEADER_URL)).toHaveText("https://example.com/");
 		await dismissPopover();
 		await browser.executeObsidianCommand("markdown:toggle-preview"); // back to reading
@@ -51,7 +51,7 @@ describe("Hoverlay smoke", function () {
 		// which Hoverlay deliberately leaves to core Page Preview; the
 		// normalization lives in the editor path, so test it there
 		await browser.executeObsidianCommand("markdown:toggle-preview"); // edit mode
-		await previewAtCursor(4, 14); // inside [Site](www.example.com)
+		await previewAtCursor(2, 14); // inside [Site](www.example.com)
 		await expect($(HEADER_URL)).toHaveText("https://www.example.com");
 		await dismissPopover();
 		await browser.executeObsidianCommand("markdown:toggle-preview"); // back to reading
