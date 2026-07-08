@@ -1,6 +1,6 @@
 {
 	"name": "hoverlay",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Obsidian plugin: link previews on hover that work on real websites.",
 	"main": "main.js",
 	"scripts": {
