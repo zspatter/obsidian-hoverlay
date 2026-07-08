@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+# a superseded run is cancelled by the next push to the same ref
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   e2e:
     strategy:
