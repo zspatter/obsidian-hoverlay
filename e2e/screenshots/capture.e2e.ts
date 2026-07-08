@@ -1,30 +1,79 @@
 import { mkdirSync } from "node:fs";
-import { before, describe, it } from "mocha";
+import * as path from "node:path";
+import { after, before, describe, it } from "mocha";
 import { browser, $ } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
-import { dismissPopover, hoverAndWaitForPopover } from "../helpers";
+import {
+	dismissPopover,
+	hoverAndWaitForPopover,
+	parkPointer,
+	restoreSettings,
+	snapshotSettings,
+} from "../helpers";
 
 const OUT = "docs/screenshots";
+const FRAMES = "e2e/screenshots/frames";
+const ARTICLE_LINK = '.markdown-preview-view a[href^="https://en.wikipedia.org"]';
+const VIDEO_LINK = '.markdown-preview-view a[href^="https://www.youtube.com"]';
+const SONG_LINK = '.markdown-preview-view a[href^="https://open.spotify.com"]';
 
 describe("capture screenshots", function () {
+	let defaults: string;
+	let frame = 0;
+
+	const snapFrame = async () => {
+		await browser.saveScreenshot(
+			path.join(FRAMES, `frame-${String(frame++).padStart(2, "0")}.png`)
+		);
+	};
+
 	before(async function () {
 		mkdirSync(OUT, { recursive: true });
+		mkdirSync(FRAMES, { recursive: true });
 		// note: setWindowSize is unsupported on Electron sessions (no
 		// window/rect endpoint); the launcher's default window size stands
 		await obsidianPage.openFile("Links.md");
+		defaults = await snapshotSettings();
 	});
 
-	it("hover preview (webview)", async function () {
-		await hoverAndWaitForPopover('.markdown-preview-view a[href="https://example.com/"]');
-		await browser.pause(2500); // let the guest page paint
+	after(async function () {
+		await restoreSettings(defaults);
+	});
+
+	it("hover action frames + hero shot", async function () {
+		// frames for the README gif: park, approach, dwell, popover, page paint
+		await parkPointer();
+		await snapFrame();
+		await $(ARTICLE_LINK).moveTo();
+		for (let i = 0; i < 14; i++) {
+			await snapFrame();
+			await browser.pause(280);
+		}
+		// the popover is open and painted now: reuse it as the hero shot
 		await browser.saveScreenshot(`${OUT}/hover-preview.png`);
 		await dismissPopover();
 	});
 
-	it("embedded player", async function () {
-		await hoverAndWaitForPopover('.markdown-preview-view a[href^="https://www.youtube.com"]');
-		await browser.pause(3500); // player chrome takes a moment
-		await browser.saveScreenshot(`${OUT}/embed-player.png`);
+	it("embedded video playing with the volume flyout", async function () {
+		await hoverAndWaitForPopover(VIDEO_LINK);
+		await browser.pause(3000); // player chrome
+		await $(".hoverlay-webview").click(); // play
+		await browser.pause(2500);
+		// embeds start audible, so the speaker offers Mute from the start
+		const speaker = $('.hoverlay-header [aria-label="Mute"]');
+		await speaker.waitForExist({ timeout: 8000 });
+		await speaker.moveTo(); // reveals the volume flyout
+		await browser.pause(400);
+		await browser.saveScreenshot(`${OUT}/media-browser.png`);
+		await dismissPopover();
+	});
+
+	it("spotify embed", async function () {
+		await hoverAndWaitForPopover(SONG_LINK);
+		await browser.pause(3500); // embed card + artwork
+		await $(".hoverlay-webview").click(); // start the preview
+		await browser.pause(2000);
+		await browser.saveScreenshot(`${OUT}/spotify-embed.png`);
 		await dismissPopover();
 	});
 

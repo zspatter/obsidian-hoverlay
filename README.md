@@ -1,23 +1,30 @@
 # Hoverlay
 
+[![CI](https://github.com/zspatter/obsidian-hoverlay/actions/workflows/ci.yml/badge.svg)](https://github.com/zspatter/obsidian-hoverlay/actions/workflows/ci.yml)
+[![E2E](https://github.com/zspatter/obsidian-hoverlay/actions/workflows/e2e.yml/badge.svg)](https://github.com/zspatter/obsidian-hoverlay/actions/workflows/e2e.yml)
+
 Link previews on hover for [Obsidian](https://obsidian.md) that work on real websites.
 
 Hover any external link and a floating preview opens: the live page, a clean reader view, or a metadata card, with embedded players for media links. Browse inside it, pin it, resize it, or send it to your browser.
 
-![Hovering a link previews the live page](docs/screenshots/hover-preview.png)
+![Hovering a link previews the live page](docs/screenshots/hover.gif)
 
 ## Why another link preview plugin
 
 Existing hover-preview plugins render pages in an `<iframe>`. Any site that sends `X-Frame-Options` or a CSP `frame-ancestors` header (GitHub, Reddit, Wikipedia, most of the web you actually link to) silently refuses to render there, leaving a blank pane. Hoverlay sidesteps that class of failure entirely:
+
+![The live page preview rendering Wikipedia](docs/screenshots/hover-preview.png)
 
 - **Live page (desktop):** previews render in an Electron `<webview>`, a separate guest page doing top-level navigation. Framing headers don't apply to it, so real sites load.
 - **Reader view:** fetches the page, extracts the article with Mozilla Readability, sanitizes it, and renders just the text in your theme's typography. No scripts or trackers ever run.
 - **Metadata card:** OpenGraph/Twitter card with title, description, image and favicon, fetched through Obsidian's own request pipeline (immune to CORS, no third-party preview APIs, no keys). The automatic fallback whenever a richer mode can't render, and the default on mobile.
 - **Embedded players:** media links (YouTube, Vimeo, Spotify, SoundCloud) load the provider's embed player instead of the full page: lighter, no cookie walls, playlists and timestamps preserved.
 
-![Media links open as embedded players](docs/screenshots/embed-player.png)
+![A Spotify track embedded in the popover](docs/screenshots/spotify-embed.png)
 
 ## Using the popover
+
+![A video playing in the popover with the volume flyout open](docs/screenshots/media-browser.png)
 
 - **Hover** an external link (optionally behind a modifier combination), wait the configured delay, get a preview. Works in reading view, live preview and source mode; editor links are resolved from the document itself, so live preview's folded `[text](url)` links work.
 - **Header controls:** back/forward history, the current URL, maximize/restore, pin (stay open until Escape or a click elsewhere), mute with a volume slider on hover, open in browser, close.

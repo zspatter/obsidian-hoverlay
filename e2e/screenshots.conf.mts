@@ -28,7 +28,7 @@ export const config: WebdriverIO.Config = {
 	reporters: ["obsidian"],
 	mochaOpts: {
 		ui: "bdd",
-		timeout: 120 * 1000,
+		timeout: 240 * 1000, // the media shot waits out ad chains
 	},
 	waitforInterval: 250,
 	waitforTimeout: 10 * 1000,
