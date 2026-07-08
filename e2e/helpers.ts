@@ -18,8 +18,20 @@ export async function hoverAndWaitForPopover(selector: string): Promise<void> {
 }
 
 export async function dismissPopover(): Promise<void> {
-	await browser.keys(["Escape"]);
-	await $(POPOVER).waitForExist({ timeout: 4000, reverse: true });
+	// a just-loaded guest page can hold keyboard focus for an instant before
+	// the plugin bounces it back to the host; an Escape landing in that gap
+	// is swallowed, so keep pressing until the popover actually closes
+	await browser.waitUntil(
+		async () => {
+			await browser.keys(["Escape"]);
+			return !(await $(POPOVER).isExisting());
+		},
+		{
+			timeout: 8000,
+			interval: 500,
+			timeoutMsg: "popover still existing after repeated Escapes",
+		}
+	);
 }
 
 /** place the editor cursor and run the preview-link-under-cursor command */
