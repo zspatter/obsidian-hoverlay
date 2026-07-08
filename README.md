@@ -48,7 +48,9 @@ To test in a vault, copy or symlink `manifest.json`, `main.js`, and `styles.css`
 
 `npm test` runs two tiers: pure-module unit tests, including exhaustive permutation sweeps for modifier combinations, zoom-key conflict resolution, renderer selection and popover geometry, and jsdom tests covering the popover's interaction behavior (dismissal permutation matrix included), metadata parsing and the reader's sanitization pipeline. New decision logic should arrive as a pure function with a permutation sweep.
 
-CI (`.github/workflows/ci.yml`) gates every push and pull request, and reruns weekly on a schedule to catch upstream drift. Planned third tier: e2e via wdio-obsidian-service driving real Obsidian, matrixed over obsidian-version (earliest supported and latest) and OS (Windows, macOS, Linux).
+`npm run test:e2e` runs the third tier: end-to-end specs under `e2e/` driving real Obsidian via wdio-obsidian-service (hover previews, dismissal, scheme-less normalization, the cursor command). Set `OBSIDIAN_VERSIONS="latest/latest"` to narrow the version matrix locally.
+
+CI gates every push and pull request with the unit/component tiers (`ci.yml`) and runs the e2e matrix (`e2e.yml`) on PRs and main, across obsidian-version (earliest supported and latest, catching installer-pinned Chromium differences) and OS (Windows, macOS, Linux). Both reschedule weekly to catch upstream drift.
 
 ## Roadmap
 
