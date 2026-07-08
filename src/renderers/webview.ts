@@ -36,8 +36,8 @@ interface ElectronWebview extends HTMLElement {
 
 /** guest scrollbar theming, with the vault's scrollbar variables resolved
  *  at render time so theme switches apply to the next preview */
-function themedScrollbarCss(): string {
-	const style = getComputedStyle(activeDocument.body);
+function themedScrollbarCss(doc: Document): string {
+	const style = getComputedStyle(doc.body);
 	const read = (name: string, fallback: string) =>
 		style.getPropertyValue(name).trim() || fallback;
 	const thumb = read("--scrollbar-thumb-bg", "rgba(0, 0, 0, 0.2)");
@@ -66,7 +66,9 @@ export function renderWebview(
 ): RendererHandle {
 	const { zoom, muted, volume, onFail, onNavigate, onMediaPlaying } = options;
 	const frame = container.createDiv({ cls: "hoverlay-webview-frame" });
-	const webview = activeDocument.createElement("webview") as ElectronWebview;
+	// the popover may live in a pop-out window; build in its document
+	const doc = container.ownerDocument;
+	const webview = doc.createElement("webview") as ElectronWebview;
 	webview.setAttribute("src", url);
 	webview.classList.add("hoverlay-webview");
 
@@ -122,7 +124,7 @@ export function renderWebview(
 		loading.remove();
 		try {
 			webview.setAudioMuted(currentMuted);
-			void webview.insertCSS(themedScrollbarCss());
+			void webview.insertCSS(themedScrollbarCss(doc));
 			void webview.executeJavaScript(guestBootstrapJs(currentVolume));
 		} catch {
 			// muting, scrollbar theming and the guest bootstrap are all optional
@@ -177,9 +179,9 @@ export function renderWebview(
 	return {
 		dispose: () => {
 			loading.remove();
-			const fullscreenEl = activeDocument.fullscreenElement;
+			const fullscreenEl = doc.fullscreenElement;
 			if (guestFullscreen || (fullscreenEl && frame.contains(fullscreenEl))) {
-				void activeDocument.exitFullscreen().catch(() => {});
+				void doc.exitFullscreen().catch(() => {});
 			}
 			try {
 				webview.stop();

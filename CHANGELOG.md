@@ -6,6 +6,16 @@ All notable changes to Hoverlay are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Hover previews inside Canvas text cards (canvas covers card content
+  with an event blocker; links under the pointer are now hit-tested
+  through it)
+- Pop-out window support: hovers in pop-outs open the popover in that
+  window, with per-window listeners and viewport math
+- Six more embed providers: Dailymotion (and dai.ly links), Streamable,
+  Loom, Apple Music, Apple Podcasts and Deezer
+
 ## [0.1.2] - 2026-07-08
 
 Community plugin review pass.

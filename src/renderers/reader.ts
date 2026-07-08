@@ -64,7 +64,10 @@ export function renderReader(
 
 		// links inside the article open externally instead of navigating anything
 		body.addEventListener("click", (evt) => {
-			const anchor = evt.target instanceof Element ? evt.target.closest("a") : null;
+			// nodeType, not instanceof: the popover may live in a pop-out window
+			const target = evt.target as Node | null;
+			const anchor =
+				target && target.nodeType === 1 ? (target as Element).closest("a") : null;
 			const href = anchor?.getAttribute("href");
 			if (href) {
 				evt.preventDefault();

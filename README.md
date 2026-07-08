@@ -26,7 +26,7 @@ Existing hover-preview plugins render pages in an `<iframe>`. Any site that send
 
 ![A video playing in the popover with the volume flyout open](docs/screenshots/media-browser.png)
 
-- **Hover** an external link (optionally behind a modifier combination), wait the configured delay, get a preview. Works in reading view, live preview, source mode and Canvas text cards; editor links are resolved from the document itself, so live preview's folded `[text](url)` links work.
+- **Hover** an external link (optionally behind a modifier combination), wait the configured delay, get a preview. Works in reading view, live preview, source mode, Canvas text cards and pop-out windows; editor links are resolved from the document itself, so live preview's folded `[text](url)` links work.
 - **Header controls:** back/forward history, the current URL, maximize/restore, pin (stay open until Escape or a click elsewhere), mute with a volume slider on hover, open in browser, close.
 - **Move and size it:** drag the header to reposition; drag any edge or corner to resize (optionally remembered as the new default).
 - **Zoom:** hold the zoom key and scroll over the preview; a percentage badge appears, and clicking it resets to 100%.
