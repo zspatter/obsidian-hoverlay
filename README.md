@@ -1,54 +1,69 @@
 # Hoverlay
 
-Link previews on hover for Obsidian that work on real websites.
+Link previews on hover for [Obsidian](https://obsidian.md) that work on real websites.
+
+Hover any external link and a floating preview opens: the live page, a clean reader view, or a metadata card, with embedded players for media links. Browse inside it, pin it, resize it, or send it to your browser.
+
+![Hovering a link previews the live page](docs/screenshots/hover-preview.png)
 
 ## Why another link preview plugin
 
-The existing hover-preview plugins render external pages in an `<iframe>`. Any site that sends `X-Frame-Options` or a CSP `frame-ancestors` header (GitHub, Reddit, Wikipedia, most of the web you actually link to) refuses to render in an iframe, and the refusal is silent, so the preview just shows a blank pane. Hoverlay avoids that class of failure entirely:
+Existing hover-preview plugins render pages in an `<iframe>`. Any site that sends `X-Frame-Options` or a CSP `frame-ancestors` header (GitHub, Reddit, Wikipedia, most of the web you actually link to) silently refuses to render there, leaving a blank pane. Hoverlay sidesteps that class of failure entirely:
 
-- **Desktop:** previews render in an Electron `<webview>`, a separate guest page doing top-level navigation. Framing headers do not apply to it. This is the same mechanism Canvas web embeds use.
-- **Reader mode (optional):** fetches the page, extracts the article with Mozilla Readability, sanitizes it with DOMPurify, and renders just the text in your theme's typography. No scripts or trackers ever run.
-- **Embedded players (auto mode):** media links (YouTube, Vimeo, Spotify, SoundCloud) load the provider's embedded player instead of the full page: lighter, no cookie walls, playlist and timestamp parameters preserved. Embeds start with audio on while ordinary pages stay muted against autoplay noise; a header speaker button toggles either. Globally toggleable, `host: webview` forces the full page for a site, `host: embed` forces the player even with the global toggle off.
-- **Mobile, or when a page still fails to load:** Hoverlay fetches the page through Obsidian's `requestUrl` (a main-process request, immune to CORS), parses OpenGraph/Twitter metadata, and renders a compact card with title, description, image and favicon. No third-party preview APIs, no keys.
+- **Live page (desktop):** previews render in an Electron `<webview>`, a separate guest page doing top-level navigation. Framing headers don't apply to it, so real sites load.
+- **Reader view:** fetches the page, extracts the article with Mozilla Readability, sanitizes it, and renders just the text in your theme's typography. No scripts or trackers ever run.
+- **Metadata card:** OpenGraph/Twitter card with title, description, image and favicon, fetched through Obsidian's own request pipeline (immune to CORS, no third-party preview APIs, no keys). The automatic fallback whenever a richer mode can't render, and the default on mobile.
+- **Embedded players:** media links (YouTube, Vimeo, Spotify, SoundCloud) load the provider's embed player instead of the full page: lighter, no cookie walls, playlists and timestamps preserved.
 
-## Behavior
+![Media links open as embedded players](docs/screenshots/embed-player.png)
 
-- Works in reading view, live preview, and source mode. In the editors, the hovered link is resolved from the CodeMirror document itself rather than the DOM, so live preview's folded `[text](url)` links work even though the URL never appears on screen.
-- Hover an external link, wait the configured delay (default 400 ms), get a preview.
-- Scheme-less links (`[site](www.foo.com)`, `github.com/user` in plain editor text) are normalized to `https://` automatically; bare domains are gated behind a known-TLD list so file names like `notes.txt` never preview. Obsidian resolves scheme-less hrefs against the app origin, which is why other preview plugins silently ignore them.
-- Drag the header to reposition a popover (per-popup, nothing persists). Zooming shows a transient percentage badge in the header; clicking it resets zoom to 100%.
-- Navigating to links inside a live preview reveals back/forward buttons in the header, the URL readout follows along, and "Open in browser" opens the page you're looking at now. Mouse back/forward buttons work over the preview too, without hijacking Obsidian's note navigation elsewhere.
-- The popover stays open while the pointer is over it. Dismissal is configurable: hover mode closes shortly after the pointer leaves, sticky mode waits for Escape or a click anywhere else. Escape always closes.
-- Drag the right/bottom edges or the corner to resize; optionally the new size persists as the default.
-- A slim header bar shows the hostname plus maximize (fills the Obsidian window, toggles back), open in browser, and close buttons. While maximized, hover dismissal is suspended; close via Escape, the X, or restore.
-- Hold Ctrl/Cmd and scroll over an open preview to adjust the page zoom. (Holding the key overlays a shield so the zoom scroll reaches the plugin instead of scrolling the embedded page.)
-- Internal links are untouched; core Page preview owns those.
+## Using the popover
+
+- **Hover** an external link (optionally behind a modifier combination), wait the configured delay, get a preview. Works in reading view, live preview and source mode; editor links are resolved from the document itself, so live preview's folded `[text](url)` links work.
+- **Header controls:** back/forward history, the current URL, maximize/restore, pin (stay open until Escape or a click elsewhere), mute with a volume slider on hover, open in browser, close.
+- **Move and size it:** drag the header to reposition; drag any edge or corner to resize (optionally remembered as the new default).
+- **Zoom:** hold the zoom key and scroll over the preview; a percentage badge appears, and clicking it resets to 100%.
+- **Mouse back/forward buttons** navigate the preview's history when over it, and keep navigating your notes when not.
+- **Keyboard:** bind the "Preview link under cursor" command to a hotkey to open previews without the mouse. Escape always closes.
+- **Audio:** embedded players start audible; ordinary pages stay muted (no autoplay noise) until you unmute via the speaker button, which appears whenever a page plays media.
 
 ## Settings
 
-- Preview mode: auto (webview on desktop, card on mobile) / live page / reader / card, plus per-domain overrides (`host: mode`, most specific entry wins)
-- Trigger modifiers: any combination of Ctrl, Alt, Shift, Cmd/Win (or none for plain hover), with optional close-on-release
-- Command palette: "Preview link under cursor" (bindable to a hotkey) opens the preview for the link at the editor cursor
-- Hover delay, hide grace period, and an optional stillness delay (pointer movement restarts the countdown, guarding against accidental triggers while sweeping across text)
-- Dismissal mode: hover or sticky
-- Popover size, remember-resized-size toggle, page zoom
-- Per-domain blocklist
+![Settings tab](docs/screenshots/settings.png)
+
+- **Trigger:** modifier combination (any of Ctrl/Alt/Shift/Cmd, or none for plain hover), close on modifier release, hover delay, and an optional stillness delay so sweeping the pointer across text never triggers.
+- **Dismissal:** hover mode (closes when the pointer leaves, with a grace period) or sticky mode (Escape or click elsewhere).
+- **Preview:** mode (auto, live page, reader, card), popover size, remember-resized-size, page zoom, zoom key (Ctrl/Alt/Shift or Off), embedded players toggle, media volume.
+- **Filtering:** per-domain preview modes (`host: mode`, subdomains inherit, most specific wins, `embed` and `webview` available as forcing overrides) and a domain blocklist.
+
+## Behavior notes
+
+- Internal links are never touched; core Page Preview owns those. Scheme-less targets (`[site](www.example.com)`) are normalized to https, gated behind a known-TLD list, and resolved against your vault first so notes are never mistaken for web domains.
+- Privacy: live page previews load the real page (scripts and all) inside the sandboxed webview. Reader and card modes only ever fetch the page HTML. If you prefer fetch-only behavior for certain sites or globally, per-domain modes and the global mode setting cover both.
+- Mobile: webviews don't exist there, so previews use the metadata card (or reader mode).
+- Some videos restrict embedded playback (typically major-label music); the player shows "Video unavailable" with a Watch on YouTube link in that case. `host: webview` in per-domain modes forces the full page for a site if you prefer.
+
+## Installation
+
+Until Hoverlay is in the community catalog, install manually: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/zspatter/obsidian-hoverlay/releases) into `<vault>/.obsidian/plugins/hoverlay/`, then enable it in Community plugins. [BRAT](https://github.com/TfTHacker/obsidian42-brat) also works with this repo.
 
 ## Development
 
 ```bash
 npm install
-npm run dev    # watch build
-npm run build  # typecheck + production build
+npm run dev        # watch build
+npm run build      # typecheck + production build
+npm test           # unit + component tiers (vitest)
+npm run test:e2e   # end-to-end against real Obsidian (wdio-obsidian-service)
 ```
 
-To test in a vault, copy or symlink `manifest.json`, `main.js`, and `styles.css` into `<vault>/.obsidian/plugins/hoverlay/`, then enable Hoverlay in Community plugins.
+To test in a vault, copy or symlink `manifest.json`, `main.js`, and `styles.css` into `<vault>/.obsidian/plugins/hoverlay/`.
 
 ### Testing
 
 `npm test` runs two tiers: pure-module unit tests, including exhaustive permutation sweeps for modifier combinations, zoom-key conflict resolution, renderer selection and popover geometry, and jsdom tests covering the popover's interaction behavior (dismissal permutation matrix included), metadata parsing and the reader's sanitization pipeline. New decision logic should arrive as a pure function with a permutation sweep.
 
-`npm run test:e2e` runs the third tier: end-to-end specs under `e2e/` driving real Obsidian via wdio-obsidian-service (hover previews, dismissal, scheme-less normalization, the cursor command). Set `OBSIDIAN_VERSIONS="latest/latest"` to narrow the version matrix locally.
+`npm run test:e2e` runs the third tier: end-to-end specs under `e2e/` driving real Obsidian via wdio-obsidian-service (hover previews across every preview mode, dismissal, embeds, scheme-less normalization, the cursor command). Set `OBSIDIAN_VERSIONS="latest/latest"` to narrow the version matrix locally.
 
 CI gates every push and pull request with the unit/component tiers (`ci.yml`) and runs the e2e matrix (`e2e.yml`) on PRs and main, across obsidian-version (earliest supported and latest, catching installer-pinned Chromium differences) and OS (Windows, macOS, Linux). Both reschedule weekly to catch upstream drift.
 
@@ -56,4 +71,8 @@ CI gates every push and pull request with the unit/component tiers (`ci.yml`) an
 
 - [ ] Canvas card links
 - [ ] Persistent metadata cache
-- [ ] Per-domain render mode overrides (e.g. always card for slow sites)
+- [ ] Additional embed providers on demand
+
+## License
+
+[MIT](LICENSE)
