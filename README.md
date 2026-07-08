@@ -55,7 +55,9 @@ Existing hover-preview plugins render pages in an `<iframe>`. Any site that send
 
 ## Installation
 
-Until Hoverlay is in the community catalog, install manually: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/zspatter/obsidian-hoverlay/releases) into `<vault>/.obsidian/plugins/hoverlay/`, then enable it in Community plugins. [BRAT](https://github.com/TfTHacker/obsidian42-brat) also works with this repo.
+Install [Hoverlay from the community plugin directory](https://community.obsidian.md/plugins/hoverlay) (in Obsidian: Settings, Community plugins, Browse, search "Hoverlay"), then enable it.
+
+Manual install also works: download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/zspatter/obsidian-hoverlay/releases) into `<vault>/.obsidian/plugins/hoverlay/`, then enable it in Community plugins.
 
 ## Development
 
