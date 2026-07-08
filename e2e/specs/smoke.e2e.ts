@@ -1,44 +1,13 @@
 import { before, beforeEach, describe, it } from "mocha";
 import { browser, expect, $ } from "@wdio/globals";
 import { obsidianPage } from "wdio-obsidian-service";
-
-const POPOVER = ".hoverlay-popover";
-const HEADER_URL = ".hoverlay-header-url";
-
-/** park the real pointer on a neutral element: moveTo an element the
- *  pointer already occupies fires no mouseover, so consecutive hover tests
- *  need the pointer to actually leave and re-enter the link */
-async function parkPointer(): Promise<void> {
-	await $(".markdown-preview-view h1").moveTo();
-}
-
-/** hover an element and wait for the popover (default hover delay is 400ms) */
-async function hoverAndWaitForPopover(selector: string): Promise<void> {
-	await parkPointer();
-	await $(selector).moveTo();
-	await $(POPOVER).waitForExist({ timeout: 8000 });
-}
-
-/** place the editor cursor and run the preview-link-under-cursor command */
-async function previewAtCursor(line: number, ch: number): Promise<void> {
-	await browser.execute(
-		(l: number, c: number) => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const view = (window as any).app.workspace.activeLeaf.view;
-			view.editor.focus();
-			view.editor.setCursor({ line: l, ch: c });
-		},
-		line,
-		ch
-	);
-	await browser.executeObsidianCommand("hoverlay:preview-link-under-cursor");
-	await $(POPOVER).waitForExist({ timeout: 8000 });
-}
-
-async function dismissPopover(): Promise<void> {
-	await browser.keys(["Escape"]);
-	await $(POPOVER).waitForExist({ timeout: 4000, reverse: true });
-}
+import {
+	HEADER_URL,
+	POPOVER,
+	dismissPopover,
+	hoverAndWaitForPopover,
+	previewAtCursor,
+} from "../helpers";
 
 describe("Hoverlay smoke", function () {
 	before(async function () {
