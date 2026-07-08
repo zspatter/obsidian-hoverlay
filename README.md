@@ -44,6 +44,12 @@ npm run build  # typecheck + production build
 
 To test in a vault, copy or symlink `manifest.json`, `main.js`, and `styles.css` into `<vault>/.obsidian/plugins/hoverlay/`, then enable Hoverlay in Community plugins.
 
+### Testing
+
+`npm test` runs two tiers: pure-module unit tests, including exhaustive permutation sweeps for modifier combinations, zoom-key conflict resolution, renderer selection and popover geometry, and jsdom tests covering the popover's interaction behavior (dismissal permutation matrix included), metadata parsing and the reader's sanitization pipeline. New decision logic should arrive as a pure function with a permutation sweep.
+
+CI (`.github/workflows/ci.yml`) gates every push and pull request, and reruns weekly on a schedule to catch upstream drift. Planned third tier: e2e via wdio-obsidian-service driving real Obsidian, matrixed over obsidian-version (earliest supported and latest) and OS (Windows, macOS, Linux).
+
 ## Roadmap
 
 - [ ] Canvas card links

@@ -107,8 +107,13 @@ export class HoverlaySettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		this.displayTriggerSection(containerEl);
+		this.displayDismissalSection(containerEl);
+		this.displayPreviewSection(containerEl);
+		this.displayFilteringSection(containerEl);
+	}
 
-		// ---- Trigger ----
+	private displayTriggerSection(containerEl: HTMLElement): void {
 		new Setting(containerEl).setHeading().setName("Trigger");
 
 		const modifierSetting = new Setting(containerEl)
@@ -174,7 +179,9 @@ export class HoverlaySettingTab extends PluginSettingTab {
 			}
 		);
 
-		// ---- Dismissal ----
+	}
+
+	private displayDismissalSection(containerEl: HTMLElement): void {
 		new Setting(containerEl).setHeading().setName("Dismissal");
 
 		new Setting(containerEl)
@@ -207,7 +214,9 @@ export class HoverlaySettingTab extends PluginSettingTab {
 			}
 		);
 
-		// ---- Preview ----
+	}
+
+	private displayPreviewSection(containerEl: HTMLElement): void {
 		new Setting(containerEl).setHeading().setName("Preview");
 
 		new Setting(containerEl)
@@ -369,7 +378,9 @@ export class HoverlaySettingTab extends PluginSettingTab {
 			zoomKeySetting.settingEl.addClass("hoverlay-setting-disabled");
 		}
 
-		// ---- Filtering ----
+	}
+
+	private displayFilteringSection(containerEl: HTMLElement): void {
 		new Setting(containerEl).setHeading().setName("Filtering");
 
 		new Setting(containerEl)

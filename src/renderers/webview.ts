@@ -14,6 +14,13 @@
  * setZoomFactor API, which proved unreliable. The transform needs no guest
  * cooperation and applies instantly, before the page has even loaded.
  */
+import {
+	NAV_BACK_MSG,
+	NAV_FORWARD_MSG,
+	applyVolumeJs,
+	guestBootstrapJs,
+	scrollbarCss,
+} from "../guest-scripts";
 import type { RendererHandle } from "./types";
 
 interface ElectronWebview extends HTMLElement {
@@ -27,66 +34,18 @@ interface ElectronWebview extends HTMLElement {
 	canGoForward(): boolean;
 }
 
-/**
- * Mouse back/forward buttons pressed over the guest never reach the host as
- * events, so a tiny inert listener inside the guest reports them over the
- * console-message channel (the only guest-to-host channel that needs no
- * preload script).
- */
-const NAV_BACK_MSG = "__hoverlay:navigate-back__";
-const NAV_FORWARD_MSG = "__hoverlay:navigate-forward__";
-
-/**
- * Injected once per guest navigation: the mouse-nav bridge plus a volume
- * hook. Electron has no guest volume API (only mute), so volume is applied
- * to the guest's media elements directly, and a capture-phase play listener
- * re-applies it to media created later (players build their elements lazily).
- */
-function guestBootstrapJs(volume: number): string {
-	const level = Math.min(1, Math.max(0, volume));
-	return (
-		`window.addEventListener("mouseup", (e) => {` +
-		` if (e.button === 3) console.log("${NAV_BACK_MSG}");` +
-		` else if (e.button === 4) console.log("${NAV_FORWARD_MSG}");` +
-		` }, true);` +
-		` window.__hoverlayVolume = ${level};` +
-		` if (!window.__hoverlayVolumeHook) {` +
-		` window.__hoverlayVolumeHook = true;` +
-		` window.addEventListener("play", (e) => {` +
-		` const t = e.target;` +
-		` if (t && typeof t.volume === "number" && typeof window.__hoverlayVolume === "number")` +
-		` { try { t.volume = window.__hoverlayVolume; } catch (err) {} }` +
-		` }, true); }` +
-		applyVolumeJs(level)
-	);
-}
-
-function applyVolumeJs(volume: number): string {
-	const level = Math.min(1, Math.max(0, volume));
-	return (
-		` window.__hoverlayVolume = ${level};` +
-		` document.querySelectorAll("video, audio").forEach((el) => {` +
-		` try { el.volume = ${level}; } catch (err) {} });` +
-		` undefined;`
-	);
-}
-
-/** guest pages keep their own scrollbars; theme them with the vault's
- *  scrollbar variables, resolved at render time so theme switches apply */
+/** guest scrollbar theming, with the vault's scrollbar variables resolved
+ *  at render time so theme switches apply to the next preview */
 function themedScrollbarCss(): string {
 	const style = getComputedStyle(document.body);
 	const read = (name: string, fallback: string) =>
 		style.getPropertyValue(name).trim() || fallback;
-	const bg = read("--scrollbar-bg", "rgba(0, 0, 0, 0.05)");
 	const thumb = read("--scrollbar-thumb-bg", "rgba(0, 0, 0, 0.2)");
-	const active = read("--scrollbar-active-thumb-bg", thumb);
-	return `
-		::-webkit-scrollbar { width: 12px; height: 12px; background-color: transparent; }
-		::-webkit-scrollbar-track { background-color: ${bg}; }
-		::-webkit-scrollbar-thumb { background-color: ${thumb}; border-radius: 12px; background-clip: padding-box; border: 3px solid transparent; }
-		::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { background-color: ${active}; }
-		::-webkit-scrollbar-corner { background: transparent; }
-	`;
+	return scrollbarCss({
+		bg: read("--scrollbar-bg", "rgba(0, 0, 0, 0.05)"),
+		thumb,
+		active: read("--scrollbar-active-thumb-bg", thumb),
+	});
 }
 
 export interface WebviewOptions {
