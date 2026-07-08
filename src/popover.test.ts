@@ -58,6 +58,10 @@ function wire(plugin: HoverlayPlugin): void {
 		capture: true,
 		signal,
 	});
+	document.addEventListener("wheel", (e) => manager.onWheel(e), {
+		capture: true,
+		signal,
+	});
 }
 
 function addLink(href: string): HTMLAnchorElement {
@@ -223,6 +227,25 @@ describe("dismissal", () => {
 		expect(popover()).toBeNull();
 	});
 
+	it("wheel outside closes; wheel inside the popover does not", () => {
+		wire(makePlugin());
+		hover(addLink("https://example.com/"));
+		vi.advanceTimersByTime(400);
+		popover()!.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
+		expect(popover()).not.toBeNull();
+		document.body.dispatchEvent(new WheelEvent("wheel", { bubbles: true }));
+		expect(popover()).toBeNull();
+	});
+
+	it("modifier release closes even a pinned popover (documented behavior)", () => {
+		wire(makePlugin({ modifiers: ["ctrl"], closeOnModifierRelease: true }));
+		hover(addLink("https://example.com/"), { ctrlKey: true });
+		vi.advanceTimersByTime(400);
+		headerButton("Pin")!.dispatchEvent(new MouseEvent("click"));
+		pressKey("keyup", { key: "Control", ctrlKey: false });
+		expect(popover()).toBeNull();
+	});
+
 	it("maximize suspends dismissal; restore defers it by a grace period", () => {
 		wire(makePlugin());
 		hover(addLink("https://example.com/"));
@@ -242,4 +265,64 @@ describe("dismissal", () => {
 		vi.advanceTimersByTime(1);
 		expect(popover()).toBeNull();
 	});
+});
+
+describe("dismissal permutation matrix", () => {
+	interface Scenario {
+		name: string;
+		sticky: boolean;
+		suspend: "none" | "pin" | "maximize";
+	}
+	// pin only exists in hover mode, so sticky/pinned is not a real cell
+	const scenarios: Scenario[] = [
+		{ name: "hover, plain", sticky: false, suspend: "none" },
+		{ name: "hover, pinned", sticky: false, suspend: "pin" },
+		{ name: "hover, maximized", sticky: false, suspend: "maximize" },
+		{ name: "sticky, plain", sticky: true, suspend: "none" },
+		{ name: "sticky, maximized", sticky: true, suspend: "maximize" },
+	];
+
+	for (const scenario of scenarios) {
+		const closesOnLeave = !scenario.sticky && scenario.suspend === "none";
+
+		it(`${scenario.name}: leave ${closesOnLeave ? "closes" : "keeps open"}; Escape and click outside always close`, () => {
+			wire(makePlugin({ stickyMode: scenario.sticky ? "sticky" : "hover" }));
+
+			const openPopover = () => {
+				const link = addLink("https://example.com/");
+				hover(link);
+				vi.advanceTimersByTime(400);
+				expect(popover()).not.toBeNull();
+				if (scenario.suspend === "pin") {
+					headerButton("Pin")!.dispatchEvent(new MouseEvent("click"));
+				}
+				if (scenario.suspend === "maximize") {
+					headerButton("Maximize")!.dispatchEvent(new MouseEvent("click"));
+				}
+				return link;
+			};
+
+			// pointer leaves the popover and wanders the document
+			const link = openPopover();
+			leave(popover()!);
+			leave(link);
+			hover(document.body);
+			vi.advanceTimersByTime(5000);
+			if (closesOnLeave) {
+				expect(popover()).toBeNull();
+			} else {
+				expect(popover()).not.toBeNull();
+			}
+
+			// Escape always closes
+			if (!popover()) openPopover();
+			pressKey("keydown", { key: "Escape" });
+			expect(popover()).toBeNull();
+
+			// click outside always closes
+			openPopover();
+			mousedownOn(document.body);
+			expect(popover()).toBeNull();
+		});
+	}
 });

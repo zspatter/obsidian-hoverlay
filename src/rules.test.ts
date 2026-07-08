@@ -8,6 +8,17 @@ import {
 	resolveZoomModifier,
 	zoomConflictsWithTriggers,
 } from "./rules";
+import type { ModifierKey, ZoomModifier } from "./rules";
+
+const ALL_MODIFIERS: ModifierKey[] = ["ctrl", "alt", "shift", "meta"];
+const ZOOM_OPTIONS: ZoomModifier[] = ["ctrl", "alt", "shift"];
+
+/** every subset of the given array (powerset) */
+function subsets<T>(items: T[]): T[][] {
+	return [...Array(1 << items.length).keys()].map((mask) =>
+		items.filter((_, index) => mask & (1 << index))
+	);
+}
 
 const state = (overrides: Partial<Parameters<typeof modifiersHeld>[0]> = {}) => ({
 	ctrlKey: false,
@@ -28,6 +39,51 @@ describe("modifiersHeld", () => {
 		expect(modifiersHeld(state({ ctrlKey: true }), ["ctrl", "shift"])).toBe(false);
 		expect(modifiersHeld(state({ ctrlKey: true, shiftKey: true }), ["ctrl", "shift"])).toBe(true);
 		expect(modifiersHeld(state({ altKey: true }), ["meta"])).toBe(false);
+	});
+});
+
+describe("modifier permutations (exhaustive)", () => {
+	it("modifiersHeld matches subset semantics for all 256 combinations", () => {
+		for (const required of subsets(ALL_MODIFIERS)) {
+			for (const held of subsets(ALL_MODIFIERS)) {
+				const state = {
+					ctrlKey: held.includes("ctrl"),
+					altKey: held.includes("alt"),
+					shiftKey: held.includes("shift"),
+					metaKey: held.includes("meta"),
+				};
+				expect(modifiersHeld(state, required)).toBe(
+					required.every((mod) => held.includes(mod))
+				);
+			}
+		}
+	});
+
+	it("resolveZoomModifier never yields a conflicting key; null only when all conflict", () => {
+		for (const triggers of subsets(ALL_MODIFIERS)) {
+			for (const preferred of ZOOM_OPTIONS) {
+				for (const closeOnRelease of [false, true]) {
+					const result = resolveZoomModifier(preferred, triggers, closeOnRelease);
+
+					if (!closeOnRelease || triggers.length === 0) {
+						expect(result).toBe(preferred);
+						continue;
+					}
+					const allConflict = ZOOM_OPTIONS.every((option) =>
+						zoomConflictsWithTriggers(option, triggers)
+					);
+					if (allConflict) {
+						expect(result).toBeNull();
+					} else {
+						expect(result).not.toBeNull();
+						expect(zoomConflictsWithTriggers(result!, triggers)).toBe(false);
+						if (!zoomConflictsWithTriggers(preferred, triggers)) {
+							expect(result).toBe(preferred);
+						}
+					}
+				}
+			}
+		}
 	});
 });
 
