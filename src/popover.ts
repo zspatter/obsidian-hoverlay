@@ -1,8 +1,11 @@
 import { Platform, setIcon } from "obsidian";
 import type { Editor } from "obsidian";
 import type HoverlayPlugin from "./main";
-import { modifiersHeld, isHostBlocked, resolveZoomModifier } from "./rules";
+import { modifiersHeld, isHostBlocked, resolveZoomModifier, webviewPartition } from "./rules";
 import type { ZoomModifier } from "./rules";
+import { shouldDismiss } from "./dismissal";
+import type { DismissalEvent } from "./dismissal";
+import type { GuestKeyEvent } from "./guest-scripts";
 import { normalizeUrl, sameCanonicalUrl } from "./links";
 import { resolveLinkAt, resolveEditorCursorLink } from "./link-resolver";
 import type { ResolvedLink } from "./link-resolver";
@@ -29,6 +32,12 @@ import type { RendererHandle } from "./renderers/types";
 /** hover dismissal grace after restoring from maximize, so the popover
  *  doesn't instantly close when the cursor lands outside the restored rect */
 const RESTORE_HOVER_SUSPEND_MS = 1500;
+/** guest focus with no evidence of a click is bounced after this long; a
+ *  click's guest-side mousedown message races the focus event over async
+ *  IPC, so the refusal must wait for it before concluding it was a steal */
+const GUEST_FOCUS_BOUNCE_MS = 250;
+/** how recent a guest mousedown still legitimizes a focus gain */
+const GUEST_POINTER_FRESH_MS = 1000;
 /** re-resolving the same hovered element within this window reuses the last
  *  result (editor scans force layout reads on every mouseover otherwise) */
 const RESOLVE_CACHE_MS = 250;
@@ -88,8 +97,9 @@ interface PendingHover {
 /**
  * Owns the single popover instance: hover intake, show/hide lifecycle and
  * the wiring between header controls, renderers and settings. Decisions
- * live in the pure modules (links, rules, presentation, geometry); this
- * class reads DOM state, calls them and applies the results.
+ * live in the pure modules (links, rules, presentation, geometry,
+ * dismissal); this class reads DOM state, calls them and applies the
+ * results.
  */
 export class PopoverManager {
 	private plugin: HoverlayPlugin;
@@ -122,6 +132,16 @@ export class PopoverManager {
 	private volumeFlyoutTimer: number | null = null;
 	private pinBtnEl: HTMLElement | null = null;
 	private pinned = false;
+	/** the guest page holds keyboard focus (the user clicked into the preview) */
+	private guestFocused = false;
+	/** set while the pointer crosses the popover's host-owned chrome (header,
+	 *  frame border, handles); a real pointer over the webview surface itself
+	 *  fires NO host events, so this alone can miss fast entries */
+	private pointerInsidePopover = false;
+	/** last time the guest bootstrap reported a mousedown inside the page */
+	private lastGuestPointerAt = 0;
+	/** pending refusal of a guest focus gain; canceled by a guest mousedown */
+	private guestFocusBounceTimer: number | null = null;
 	private heldKeys = new Set<string>();
 	private lastResolveEl: Element | null = null;
 	private lastResolveTime = 0;
@@ -139,6 +159,7 @@ export class PopoverManager {
 
 		// keep the popover alive while the pointer is inside it or its handles
 		if (this.popoverEl && this.popoverEl.contains(target)) {
+			this.pointerInsidePopover = true;
 			this.cancelHide();
 			this.suspendHoverUntil = 0; // pointer is back; resume normal dismissal
 			return;
@@ -161,6 +182,9 @@ export class PopoverManager {
 			this.cancelHide();
 			return;
 		}
+		// a pinned popover holds its ground: hovering other links must not
+		// replace it (unpin or close first; the explicit cursor command may)
+		if (this.pinned) return;
 		// same link already counting down: let the timer run instead of restarting it
 		if (this.pending && this.pending.url === url) return;
 		if (this.isBlocked(url)) return;
@@ -171,7 +195,7 @@ export class PopoverManager {
 	onKeyDown(evt: KeyboardEvent): void {
 		this.heldKeys.add(evt.key);
 		if (evt.key === "Escape") {
-			this.hide(); // Escape always closes, in every mode
+			if (this.dismissalVerdict("escape")) this.hide();
 			return;
 		}
 		// wheel events over a webview go to the guest page, not the host DOM, so
@@ -187,7 +211,7 @@ export class PopoverManager {
 		if (!settings.closeOnModifierRelease || settings.modifiers.length === 0) return;
 		if (!modifiersHeld(evt, settings.modifiers)) {
 			this.cancelShow();
-			this.hide();
+			if (this.dismissalVerdict("modifier-release")) this.hide();
 		}
 	}
 
@@ -211,7 +235,9 @@ export class PopoverManager {
 			return;
 		}
 		if (inside) return;
-		this.hide(); // click anywhere outside closes (the designated dismissal in sticky mode)
+		// a click anywhere outside closes (the designated dismissal in sticky
+		// mode) unless the popover is pinned
+		if (this.dismissalVerdict("outside-click")) this.hide();
 	}
 
 	/** capture-phase pointerup/mouseup for mouse back/forward buttons over the
@@ -230,10 +256,11 @@ export class PopoverManager {
 
 	onWheel(evt: WheelEvent): void {
 		// scrolling the note under an open popover leaves it floating over stale
-		// content, so close; scrolling inside the popover is the popover's business
+		// content, so close; scrolling inside the popover is the popover's
+		// business, and a pinned popover is meant to float over a moving note
 		if (!this.popoverEl) return;
 		if (this.popoverEl.contains(evt.target as Node | null)) return;
-		this.hide();
+		if (this.dismissalVerdict("outside-wheel")) this.hide();
 	}
 
 	// ---- command entry point: preview the link under the editor cursor ----
@@ -417,6 +444,15 @@ export class PopoverManager {
 		popover.style.height = px(size.height);
 		this.popoverEl = popover;
 
+		// mode-independent pointer tracking: guest focus is only accepted while
+		// the pointer is inside the popover (see the onGuestFocus wiring)
+		popover.addEventListener("mouseenter", () => {
+			this.pointerInsidePopover = true;
+		});
+		popover.addEventListener("mouseleave", () => {
+			this.pointerInsidePopover = false;
+		});
+
 		const frame = popover.createDiv({ cls: "hoverlay-frame" });
 		this.frameEl = frame;
 		this.buildHeader(frame, url);
@@ -506,12 +542,26 @@ export class PopoverManager {
 				zoom: settings.webviewZoom,
 				muted: this.muted,
 				volume: settings.mediaVolume,
+				partition: webviewPartition(settings.persistLogins),
+				referrer: presentation.referrer,
 				onFail: fallBackToCard,
 				onNavigate: handleNavigate,
 				onMediaPlaying: () => {
 					if (this.currentUrl !== url) return;
 					this.audioActive = true;
 					this.updateMuteButton();
+				},
+				onGuestFocus: (focused) => {
+					if (this.currentUrl !== url) return;
+					this.onGuestFocus(focused);
+				},
+				onGuestPointer: () => {
+					if (this.currentUrl !== url) return;
+					this.onGuestPointer();
+				},
+				onGuestKey: (event) => {
+					if (this.currentUrl !== url) return;
+					this.onGuestKey(event);
 				},
 			});
 		} else if (presentation.kind === "reader") {
@@ -565,16 +615,12 @@ export class PopoverManager {
 			this.setZoomTo(1);
 		});
 
-		// per-popover pin: hover dismissal off until unpinned, Escape/X/click
-		// outside still close. Redundant when the global mode is already sticky.
-		if (this.plugin.settings.stickyMode === "hover") {
-			this.pinBtnEl = iconButton(
-				actions,
-				"pin",
-				"Pin (stay open until Escape or a click elsewhere)",
-				() => this.togglePin()
-			);
-		}
+		// per-popover pin: only explicit closes (the X, and Escape when the
+		// setting allows) dismiss until unpinned, so the user can work on the
+		// note, scroll it and click around with the preview staying put
+		this.pinBtnEl = iconButton(actions, "pin", "Pin (keep open until closed)", () =>
+			this.togglePin()
+		);
 
 		// mute toggle; hidden until audio is relevant (see updateMuteButton)
 		this.muteBtnEl = iconButton(actions, "volume-x", "Unmute", () => this.toggleMute());
@@ -736,9 +782,7 @@ export class PopoverManager {
 		setButtonState(
 			button,
 			this.pinned ? "pin-off" : "pin",
-			this.pinned
-				? "Unpin (resume closing when the pointer leaves)"
-				: "Pin (stay open until Escape or a click elsewhere)"
+			this.pinned ? "Unpin (resume normal closing)" : "Pin (keep open until closed)"
 		);
 	}
 
@@ -985,11 +1029,93 @@ export class PopoverManager {
 		handle.addEventListener("pointerup", onUp);
 	}
 
+	// ---- dismissal policy ----
+
+	private dismissalVerdict(event: DismissalEvent): boolean {
+		const { settings } = this.plugin;
+		return shouldDismiss(
+			{
+				mode: settings.stickyMode,
+				pinned: this.pinned,
+				maximized: this.maximized,
+				guestFocused: this.guestFocused,
+				closeOnEscape: settings.closeOnEscape,
+			},
+			event
+		);
+	}
+
+	/** guest keyboard-focus changes. A gain is legitimate only after a click:
+	 *  pointer-inside (set while crossing the popover chrome) or a recent
+	 *  guest mousedown accepts immediately; otherwise a refusal is scheduled,
+	 *  and the click's guest mousedown message, which races the focus event
+	 *  over async IPC, cancels it. Pages autofocusing on load produce no
+	 *  mousedown and get bounced, so hovering never steals the keyboard. */
+	private onGuestFocus(focused: boolean): void {
+		if (!focused) {
+			this.guestFocused = false;
+			this.cancelGuestFocusBounce();
+			return;
+		}
+		const clickedRecently =
+			Date.now() - this.lastGuestPointerAt < GUEST_POINTER_FRESH_MS;
+		if (this.pointerInsidePopover || clickedRecently) {
+			this.acceptGuestFocus();
+			return;
+		}
+		this.cancelGuestFocusBounce();
+		this.guestFocusBounceTimer = this.hostWin().setTimeout(() => {
+			this.guestFocusBounceTimer = null;
+			this.renderer?.blurGuest?.();
+		}, GUEST_FOCUS_BOUNCE_MS);
+	}
+
+	/** the guest saw a mousedown: the pointer really is inside the preview */
+	private onGuestPointer(): void {
+		this.lastGuestPointerAt = Date.now();
+		this.pointerInsidePopover = true;
+		if (this.guestFocusBounceTimer !== null) {
+			this.cancelGuestFocusBounce();
+			this.acceptGuestFocus();
+		}
+	}
+
+	private acceptGuestFocus(): void {
+		this.guestFocused = true;
+		this.cancelHide(); // clicking into the guest mid-countdown keeps it open
+	}
+
+	private cancelGuestFocusBounce(): void {
+		if (this.guestFocusBounceTimer !== null) {
+			this.hostWin().clearTimeout(this.guestFocusBounceTimer);
+			this.guestFocusBounceTimer = null;
+		}
+	}
+
+	/** keys forwarded from a focused guest: Escape dismisses per policy; the
+	 *  modifier keys keep zoom-key tracking alive. Modifier release is a
+	 *  hover-flow gesture and deliberately never closes from the guest side
+	 *  (see dismissal.ts: guest focus retires it). */
+	private onGuestKey(event: GuestKeyEvent): void {
+		const { direction, key } = event;
+		if (key === "Escape") {
+			if (direction === "down" && this.dismissalVerdict("escape")) this.hide();
+			return;
+		}
+		if (direction === "down") {
+			this.heldKeys.add(key);
+			if (this.isZoomKey(key)) this.addZoomShield();
+		} else {
+			this.heldKeys.delete(key);
+			if (this.isZoomKey(key) && !this.zoomKeyHeld()) this.removeZoomShield();
+		}
+	}
+
 	// ---- timers / teardown ----
 
 	private scheduleHide(): void {
-		if (this.pinned) return; // pinned popovers close via Escape, X or click outside
-		if (this.maximized) return; // see toggleMaximize: hover dismissal is suspended
+		// the policy covers mode, pin, maximize and guest focus; see dismissal.ts
+		if (!this.dismissalVerdict("pointer-leave")) return;
 		if (this.resizing || this.dragging) return; // never close mid-drag
 		this.cancelHide();
 		// while the post-restore grace is active, defer instead of skipping so an
@@ -1010,6 +1136,7 @@ export class PopoverManager {
 
 	hide(): void {
 		this.cancelHide();
+		this.cancelGuestFocusBounce();
 		this.removeZoomShield();
 		if (this.zoomBadgeTimer !== null) {
 			window.clearTimeout(this.zoomBadgeTimer);
@@ -1036,6 +1163,9 @@ export class PopoverManager {
 		this.pinBtnEl = null;
 		this.volumeFlyoutEl = null;
 		this.pinned = false;
+		this.guestFocused = false;
+		this.pointerInsidePopover = false;
+		this.lastGuestPointerAt = 0;
 		this.isEmbed = false;
 		this.audioActive = false;
 		this.maximized = false;

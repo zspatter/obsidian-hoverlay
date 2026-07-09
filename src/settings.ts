@@ -2,8 +2,9 @@ import { App, PluginSettingTab, Setting } from "obsidian";
 import type HoverlayPlugin from "./main";
 import { resolveZoomModifier, zoomConflictsWithTriggers } from "./rules";
 import type { ModifierKey, RenderMode, ZoomModifier } from "./rules";
+import type { StickyMode } from "./dismissal";
 
-export type StickyMode = "hover" | "sticky";
+export type { StickyMode };
 
 export const MODIFIER_LABELS: Record<ModifierKey, string> = {
 	ctrl: "Ctrl",
@@ -25,8 +26,10 @@ export interface HoverlaySettings {
 	modifiers: ModifierKey[];
 	/** close the popover as soon as a required modifier is released */
 	closeOnModifierRelease: boolean;
-	/** hover = closes when the pointer leaves; sticky = stays until Escape or a click elsewhere */
+	/** hover = closes when the pointer leaves; sticky = stays until a click elsewhere */
 	stickyMode: StickyMode;
+	/** Escape closes the preview; off for Vim users, where Escape is part of typing */
+	closeOnEscape: boolean;
 	popoverWidth: number;
 	popoverHeight: number;
 	/** remember the size after dragging the popover edges */
@@ -37,6 +40,8 @@ export interface HoverlaySettings {
 	mediaVolume: number;
 	/** zoom factor applied to the webview so pages read like a thumbnail */
 	webviewZoom: number;
+	/** keep preview logins (cookies) on disk across Obsidian restarts */
+	persistLogins: boolean;
 	/** key held (with scroll) to zoom an open preview */
 	zoomModifier: ZoomModifier;
 	/** one hostname per line; subdomains match their parent entries */
@@ -53,12 +58,14 @@ export const DEFAULT_SETTINGS: HoverlaySettings = {
 	modifiers: [],
 	closeOnModifierRelease: false,
 	stickyMode: "hover",
+	closeOnEscape: true,
 	popoverWidth: 480,
 	popoverHeight: 340,
 	persistResize: true,
 	enableEmbeds: true,
 	mediaVolume: 1,
 	webviewZoom: 0.65,
+	persistLogins: false,
 	zoomModifier: "ctrl",
 	domainBlocklist: "",
 	domainModes: "",
@@ -110,6 +117,7 @@ export class HoverlaySettingTab extends PluginSettingTab {
 		this.displayTriggerSection(containerEl);
 		this.displayDismissalSection(containerEl);
 		this.displayPreviewSection(containerEl);
+		this.displayPrivacySection(containerEl);
 		this.displayFilteringSection(containerEl);
 	}
 
@@ -140,7 +148,9 @@ export class HoverlaySettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName("Close on modifier release")
 			.setDesc(
-				"Close the preview as soon as a required modifier is released. Only applies when modifiers are selected above."
+				"Close the preview as soon as a required modifier is released. Only applies " +
+					"when modifiers are selected above. Pinned previews and previews you " +
+					"have clicked into stay open."
 			)
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.closeOnModifierRelease).onChange(async (value) => {
@@ -188,17 +198,32 @@ export class HoverlaySettingTab extends PluginSettingTab {
 			.setName("Dismissal mode")
 			.setDesc(
 				"Hover: closes shortly after the pointer leaves the link or popover. " +
-					"Sticky: stays open until Escape or a click anywhere else. Escape always closes."
+					"Sticky: stays open until a click anywhere else. In either mode, the " +
+					"pin button on a preview keeps it open until you close it yourself."
 			)
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption("hover", "Close when pointer leaves")
-					.addOption("sticky", "Sticky (Escape or click elsewhere)")
+					.addOption("sticky", "Sticky (click elsewhere to close)")
 					.setValue(this.plugin.settings.stickyMode)
 					.onChange(async (value) => {
 						this.plugin.settings.stickyMode = value as StickyMode;
 						await this.plugin.saveSettings();
 					})
+			);
+
+		new Setting(containerEl)
+			.setName("Close on Escape")
+			.setDesc(
+				"Escape closes the preview, including pinned previews. Turn this off if " +
+					"you use Vim key bindings, where Escape is part of typing and would " +
+					"keep dismissing a pinned preview."
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.closeOnEscape).onChange(async (value) => {
+					this.plugin.settings.closeOnEscape = value;
+					await this.plugin.saveSettings();
+				})
 			);
 
 		this.addNumberField(
@@ -374,6 +399,28 @@ export class HoverlaySettingTab extends PluginSettingTab {
 					}
 				}
 			});
+	}
+
+	private displayPrivacySection(containerEl: HTMLElement): void {
+		new Setting(containerEl).setHeading().setName("Privacy");
+
+		new Setting(containerEl)
+			.setName("Remember preview logins")
+			.setDesc(
+				"Live previews browse in their own cookie storage, separate from Obsidian " +
+					"and from your system browser; Hoverlay itself never reads or stores " +
+					"credentials. Off: anything you sign into inside a preview stays signed " +
+					"in only until you quit Obsidian, and nothing is written to disk. On: " +
+					"Electron keeps preview cookies on disk so logins survive restarts. " +
+					"Switching either way starts previews from a fresh cookie jar; it does " +
+					"not erase data already saved."
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.persistLogins).onChange(async (value) => {
+					this.plugin.settings.persistLogins = value;
+					await this.plugin.saveSettings();
+				})
+			);
 	}
 
 	private displayFilteringSection(containerEl: HTMLElement): void {

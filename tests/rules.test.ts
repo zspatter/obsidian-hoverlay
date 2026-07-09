@@ -6,6 +6,7 @@ import {
 	modifiersHeld,
 	parseDomainModes,
 	resolveZoomModifier,
+	webviewPartition,
 	zoomConflictsWithTriggers,
 } from "../src/rules";
 import type { ModifierKey, ZoomModifier } from "../src/rules";
@@ -159,5 +160,18 @@ describe("blocklist", () => {
 		expect(isHostBlocked("sub.example.com", blocked)).toBe(true);
 		expect(isHostBlocked("notexample.com", blocked)).toBe(false);
 		expect(isHostBlocked("example.com.evil.net", blocked)).toBe(false);
+	});
+});
+
+describe("webviewPartition", () => {
+	it("uses an in-memory jar by default and a persistent one on opt-in", () => {
+		expect(webviewPartition(false)).toBe("hoverlay");
+		expect(webviewPartition(true)).toBe("persist:hoverlay");
+	});
+
+	it("never resolves to the app-wide default session (empty string)", () => {
+		for (const persist of [false, true]) {
+			expect(webviewPartition(persist)).not.toBe("");
+		}
 	});
 });

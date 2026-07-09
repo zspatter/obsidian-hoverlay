@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { choosePresentation } from "../src/presentation";
+import { EMBED_REFERRER, choosePresentation } from "../src/presentation";
 import { parseDomainModes } from "../src/rules";
 import type { PresentationInput } from "../src/presentation";
 import type { RenderMode } from "../src/rules";
@@ -30,6 +30,7 @@ describe("choosePresentation: explicit cases", () => {
 			loadUrl: EMBED_RESULT,
 			isEmbed: true,
 			embedHint: { aspectRatio: 16 / 9 },
+			referrer: EMBED_REFERRER,
 		});
 	});
 
@@ -72,7 +73,18 @@ describe("choosePresentation: explicit cases", () => {
 			loadUrl: EMBED_RESULT,
 			isEmbed: true,
 			embedHint: { aspectRatio: 16 / 9 },
+			referrer: EMBED_REFERRER,
 		});
+	});
+
+	it("embeds declare Obsidian as the embedding site, never the provider", () => {
+		const { referrer } = choose({ url: EMBEDDABLE });
+		expect(referrer).toBe(EMBED_REFERRER);
+		// a provider-origin referrer draws YouTube error 152 (embedding
+		// disallowed); the declared embedder must be a third-party origin
+		expect(new URL(EMBED_REFERRER).hostname.endsWith("youtube.com")).toBe(false);
+		// plain pages navigate like a browser address bar: no referrer
+		expect(choose({}).referrer).toBeUndefined();
 	});
 
 	it("per-domain overrides beat the global mode in both directions", () => {
@@ -141,11 +153,13 @@ describe("choosePresentation: invariants across the full matrix", () => {
 							} else {
 								expect(result.loadUrl).toBe(url);
 							}
-							// sizing hints exist exactly for embeds
+							// sizing hints and the referrer exist exactly for embeds
 							if (result.isEmbed) {
 								expect(result.embedHint).toBeDefined();
+								expect(result.referrer).toBe(EMBED_REFERRER);
 							} else {
 								expect(result.embedHint).toBeUndefined();
+								expect(result.referrer).toBeUndefined();
 							}
 							// per-domain webview always means the raw page
 							if (entry === "webview") expect(result.isEmbed).toBe(false);

@@ -55,9 +55,10 @@ export async function hoverAndWaitForPopover(
 }
 
 export async function dismissPopover(): Promise<void> {
-	// a just-loaded guest page can hold keyboard focus for an instant before
-	// the plugin bounces it back to the host; an Escape landing in that gap
-	// is swallowed, so keep pressing until the popover actually closes
+	// a just-loaded guest page can steal keyboard focus for an instant before
+	// the plugin refuses it (and before the bootstrap that forwards Escape is
+	// injected at dom-ready); an Escape landing in that gap is swallowed, so
+	// keep pressing until the popover actually closes
 	await browser.waitUntil(
 		async () => {
 			await browser.keys(["Escape"]);

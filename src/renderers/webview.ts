@@ -15,12 +15,15 @@
  * cooperation and applies instantly, before the page has even loaded.
  */
 import {
+	GUEST_POINTER_MSG,
 	NAV_BACK_MSG,
 	NAV_FORWARD_MSG,
 	applyVolumeJs,
 	guestBootstrapJs,
+	parseGuestKeyMessage,
 	scrollbarCss,
 } from "../guest-scripts";
+import type { GuestKeyEvent } from "../guest-scripts";
 import type { RendererHandle } from "./types";
 
 interface ElectronWebview extends HTMLElement {
@@ -53,10 +56,21 @@ export interface WebviewOptions {
 	muted: boolean;
 	/** initial media volume, 0..1 */
 	volume: number;
+	/** Electron session partition; previews never share Obsidian's default session */
+	partition: string;
+	/** Referer for the load; embeds require one (see EMBED_REFERRER) */
+	referrer?: string;
 	onFail: () => void;
 	onNavigate: (url: string) => void;
 	/** fired when the guest starts playing media (also fires for muted media) */
 	onMediaPlaying: () => void;
+	/** the guest gained or lost keyboard focus; whether to keep or bounce it
+	 *  is the manager's call (via the handle's blurGuest) */
+	onGuestFocus: (focused: boolean) => void;
+	/** the guest saw a mousedown: the pointer really is inside the preview */
+	onGuestPointer: () => void;
+	/** Escape/modifier key events forwarded from the guest bootstrap */
+	onGuestKey: (event: GuestKeyEvent) => void;
 }
 
 export function renderWebview(
@@ -64,11 +78,16 @@ export function renderWebview(
 	url: string,
 	options: WebviewOptions
 ): RendererHandle {
-	const { zoom, muted, volume, onFail, onNavigate, onMediaPlaying } = options;
+	const { zoom, muted, volume, partition, referrer, onFail, onNavigate, onMediaPlaying } =
+		options;
+	const { onGuestFocus, onGuestPointer, onGuestKey } = options;
 	const frame = container.createDiv({ cls: "hoverlay-webview-frame" });
 	// the popover may live in a pop-out window; build in its document
 	const doc = container.ownerDocument;
 	const webview = doc.createElement("webview") as ElectronWebview;
+	// the partition is fixed at first navigation, so it must precede src
+	webview.setAttribute("partition", partition);
+	if (referrer) webview.setAttribute("httpreferrer", referrer);
 	webview.setAttribute("src", url);
 	webview.classList.add("hoverlay-webview");
 
@@ -143,8 +162,14 @@ export function renderWebview(
 
 	webview.addEventListener("console-message", (event: unknown) => {
 		const message = (event as { message?: string })?.message;
+		if (!message) return;
 		if (message === NAV_BACK_MSG) navigation.back();
 		else if (message === NAV_FORWARD_MSG) navigation.forward();
+		else if (message === GUEST_POINTER_MSG) onGuestPointer();
+		else {
+			const key = parseGuestKeyMessage(message);
+			if (key) onGuestKey(key);
+		}
 	});
 
 	webview.addEventListener("media-started-playing", () => onMediaPlaying());
@@ -160,13 +185,14 @@ export function renderWebview(
 		guestFullscreen = false;
 	});
 
-	// keep keyboard focus host-side: if the guest page grabs focus (a click
-	// into the preview), the host stops receiving key events and Escape,
-	// modifier tracking and zoom all silently break. A hover preview is
-	// read-only, so bounce focus straight back.
-	webview.addEventListener("focus", () => {
-		window.setTimeout(() => webview.blur(), 0);
-	});
+	// the guest may hold keyboard focus: clicking into the preview is how
+	// logins get typed. While it does, the host receives no key events, so
+	// the guest bootstrap forwards Escape and the modifier keys back over
+	// the console-message channel, and the manager is told about focus
+	// changes so it can suspend hover dismissal mid-interaction and bounce
+	// focus the guest grabbed for itself (via blurGuest below).
+	webview.addEventListener("focus", () => onGuestFocus(true));
+	webview.addEventListener("blur", () => onGuestFocus(false));
 
 	webview.addEventListener("did-fail-load", (event: unknown) => {
 		// errorCode -3 is ERR_ABORTED, fired benignly on rapid teardown/redirects
@@ -177,6 +203,13 @@ export function renderWebview(
 	frame.appendChild(webview);
 
 	return {
+		blurGuest: () => {
+			try {
+				webview.blur();
+			} catch {
+				// guest may be gone
+			}
+		},
 		dispose: () => {
 			loading.remove();
 			const fullscreenEl = doc.fullscreenElement;

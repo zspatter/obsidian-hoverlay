@@ -15,6 +15,18 @@ export interface PresentationInput {
 	isDesktop: boolean;
 }
 
+/**
+ * Referer declared when loading an embedded player. YouTube rejects embed
+ * URLs that arrive with fetch metadata but no referrer (player error 153;
+ * Obsidian's own webview sessions dodge this by stripping Sec-Fetch-Dest,
+ * which our isolated partition cannot replicate from the renderer), so
+ * every embed declares Obsidian as its embedding site. Never use the
+ * provider's own origin: YouTube answers that with error 152, embedding
+ * disallowed. Ordinary page previews send no referrer, like a browser
+ * navigating from the address bar.
+ */
+export const EMBED_REFERRER = "https://obsidian.md/";
+
 export interface Presentation {
 	kind: "webview" | "reader" | "card";
 	/** what the webview actually loads (the embed player URL for embeds) */
@@ -22,6 +34,8 @@ export interface Presentation {
 	isEmbed: boolean;
 	/** the embed's natural sizing, for whitespace trimming */
 	embedHint?: { height?: number; aspectRatio?: number };
+	/** Referer for the webview load; present exactly for embeds */
+	referrer?: string;
 }
 
 export function choosePresentation(input: PresentationInput): Presentation {
@@ -50,6 +64,7 @@ export function choosePresentation(input: PresentationInput): Presentation {
 			embedHint: embed
 				? { height: embed.height, aspectRatio: embed.aspectRatio }
 				: undefined,
+			referrer: embed ? EMBED_REFERRER : undefined,
 		};
 	}
 	if (mode === "reader") {

@@ -106,6 +106,18 @@ export function parseDomainModes(text: string): DomainModeRule[] {
 	return rules;
 }
 
+/**
+ * Cookie jar for live previews. The bare name is an in-memory Electron
+ * session partition: logins made inside previews last until the app quits
+ * and never touch disk. The persist: prefix keeps the jar on disk across
+ * restarts, for users who opt in. Either way the jar is separate from
+ * Obsidian's default session, so preview browsing never reads or pollutes
+ * app-wide cookies.
+ */
+export function webviewPartition(persistLogins: boolean): string {
+	return persistLogins ? "persist:hoverlay" : "hoverlay";
+}
+
 /** subdomains match their parent entries; the most specific entry wins */
 export function matchDomainMode(hostname: string, rules: DomainModeRule[]): DomainMode | null {
 	const host = hostname.toLowerCase();

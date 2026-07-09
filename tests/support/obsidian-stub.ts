@@ -7,7 +7,9 @@
  * *.test.ts files next to the modules they cover.
  */
 
-export const Platform = { isDesktopApp: false }; // forces the card renderer in jsdom
+// false forces the card renderer, the jsdom default; the guest-interaction
+// suite in popover.test.ts flips this to reach the webview renderer
+export const Platform = { isDesktopApp: false };
 
 export function setIcon(): void {}
 
