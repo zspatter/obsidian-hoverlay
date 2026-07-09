@@ -99,10 +99,13 @@ describe("guest interaction", function () {
 		await dismissPopover();
 	});
 
-	it("a pinned popover survives clicking into the note", async function () {
+	it("a pinned popover survives clicking elsewhere in the workspace", async function () {
 		await hoverAndWaitForPopover(EXAMPLE_LINK);
 		await $(PIN_BUTTON).click();
-		await $(".inline-title").click();
+		// the click target must be reliably outside the popover on every OS:
+		// the popover overlaps the note title on some window layouts (ubuntu),
+		// and WebDriver refuses to click an obscured element
+		await $(".nav-file-title-content=Links").click();
 		await browser.pause(600); // longer than the hide grace period
 		await expect($(POPOVER)).toExist();
 		await dismissPopover();
