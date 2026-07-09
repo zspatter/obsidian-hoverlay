@@ -6,6 +6,44 @@ All notable changes to Hoverlay are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Pin now means "keep open until closed": a pinned preview survives the
+  pointer leaving, clicks and scrolling outside, and modifier release, in
+  both dismissal modes, so you can type in a note with a preview pinned
+  alongside (previously any outside click closed it). The pin button also
+  appears in sticky mode now, and hovering other links no longer replaces
+  a pinned preview
+- Live previews are interactive: click into one to give the page keyboard
+  focus and type (sign into sites, use search boxes). Escape still closes,
+  forwarded out of the focused page; hover dismissal pauses while the page
+  holds the keyboard; pages that try to grab focus on load without a click
+  are refused so hovering never steals the keyboard mid-typing
+- Close on Escape toggle (default on), for Vim users, where Escape is part
+  of typing and would keep dismissing pinned previews
+- Remember preview logins toggle (default off): by default anything you
+  sign into inside a preview stays signed in only until Obsidian quits and
+  never touches disk; opt in to keep preview logins across restarts
+
+### Changed
+
+- Live previews browse in their own isolated cookie storage instead of
+  Electron's default session, so preview browsing can no longer read or
+  write Obsidian's app-wide cookies (previews that inherited logins from
+  other webview surfaces, like Canvas embeds, start signed out; sign in
+  inside a preview instead)
+- Embedded players now declare obsidian.md as their embedding site (a
+  Referer header on the player load only, never on ordinary page
+  previews); YouTube refuses referrer-less embeds from isolated sessions
+  with player error 153
+
+### Known limitations
+
+- Sites whose login opens a separate popup window (some OAuth flows) can't
+  complete inside a preview: Obsidian's main process denies popup windows
+  from embedded pages. Logins that redirect within the same page work.
+  HTTP basic-auth prompts are also unavailable to plugins
+
 ## [0.2.0] - 2026-07-08
 
 ### Added
