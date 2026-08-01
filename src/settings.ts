@@ -1,4 +1,5 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
+import type { SettingControl, SettingDefinitionItem } from "obsidian";
 import type HoverlayPlugin from "./main";
 import { resolveZoomModifier, zoomConflictsWithTriggers } from "./rules";
 import type { ModifierKey, RenderMode, ZoomModifier } from "./rules";
@@ -71,15 +72,303 @@ export const DEFAULT_SETTINGS: HoverlaySettings = {
 	domainModes: "",
 };
 
-interface NumberFieldOptions {
+export interface NumberFieldSpec {
 	/** min/max/step are in display units (after displayScale is applied) */
 	min: number;
 	max: number;
 	step: number;
 	/** display multiplier, e.g. 100 to show a 0..1 factor as percent */
 	displayScale?: number;
-	get: () => number;
-	set: (value: number) => void;
+}
+
+export type NumberFieldKey =
+	| "hoverDelay"
+	| "stillnessDelay"
+	| "hideDelay"
+	| "mediaVolume"
+	| "popoverWidth"
+	| "popoverHeight"
+	| "webviewZoom";
+
+/** the single source of truth for numeric bounds: both the imperative
+ *  display() fields and the declarative setting definitions read this, so
+ *  the two representations cannot drift */
+export const NUMBER_FIELDS: Record<NumberFieldKey, NumberFieldSpec> = {
+	hoverDelay: { min: 0, max: 3000, step: 50 },
+	stillnessDelay: { min: 0, max: 3000, step: 50 },
+	hideDelay: { min: 100, max: 3000, step: 50 },
+	mediaVolume: { min: 0, max: 100, step: 5, displayScale: 100 },
+	popoverWidth: { min: 260, max: 2000, step: 20 },
+	popoverHeight: { min: 180, max: 1500, step: 20 },
+	webviewZoom: { min: 25, max: 150, step: 5, displayScale: 100 },
+};
+
+/** display units -> stored value: clamp to the spec's bounds, then undo the
+ *  display scaling without leaving float dust (65% -> exactly 0.65) */
+export function storeNumberField(spec: NumberFieldSpec, display: number): number {
+	const scale = spec.displayScale ?? 1;
+	const clamped = Math.min(spec.max, Math.max(spec.min, display));
+	return Math.round((clamped / scale) * 10000) / 10000;
+}
+
+/** stored value -> display units */
+export function displayNumberField(spec: NumberFieldSpec, stored: number): number {
+	const scale = spec.displayScale ?? 1;
+	return Math.round(stored * scale * 100) / 100;
+}
+
+/** custom rows that need imperative UI on both render paths; the tab
+ *  supplies these so the definitions stay pure data for the drift guard */
+export interface SettingRenderHooks {
+	renderModifiers: (setting: Setting) => void;
+	renderZoomKey: (setting: Setting) => void;
+}
+
+export interface DefinitionEntry {
+	name: string;
+	desc?: string;
+	aliases?: string[];
+	control?: SettingControl;
+	render?: (setting: Setting) => void;
+}
+
+export interface DefinitionGroup {
+	type: "group";
+	heading: string;
+	items: DefinitionEntry[];
+}
+
+export const ZOOM_KEY_DESC =
+	"Hold this key and scroll over an open preview to zoom it. Off disables scroll zoom.";
+
+/**
+ * The single source of truth for the settings tab. Obsidian 1.13+ renders
+ * the tab declaratively from these definitions and indexes them for the
+ * settings search; display() is NEVER called there once
+ * getSettingDefinitions() returns a non-empty array (obsidian.d.ts,
+ * SettingTab.display). Pre-1.13 renders via display(), which is an
+ * interpreter over these same definitions. Custom rows (the modifier
+ * button row, the conflict-aware zoom key dropdown) are render callbacks
+ * executed by BOTH paths, so no behavior can live on one path only.
+ */
+export function settingDefinitions(hooks: SettingRenderHooks): DefinitionGroup[] {
+	const number = (key: NumberFieldKey) => {
+		const spec = NUMBER_FIELDS[key];
+		return {
+			type: "number" as const,
+			key,
+			min: spec.min,
+			max: spec.max,
+			step: spec.step,
+			defaultValue: displayNumberField(spec, DEFAULT_SETTINGS[key]),
+		};
+	};
+
+	return [
+		{
+			type: "group",
+			heading: "Trigger",
+			items: [
+				{
+					name: "Hold to trigger",
+					desc:
+						"Modifiers that must be held while hovering for the preview to open. " +
+						"Select none to trigger on plain hover; select several to require the combination.",
+					aliases: ["modifiers", "ctrl", "alt", "shift", "cmd", "hotkey"],
+					render: hooks.renderModifiers,
+				},
+				{
+					name: "Close on modifier release",
+					desc:
+						"Close the preview as soon as a required modifier is released. Only applies " +
+						"when modifiers are selected above. Pinned previews and previews you " +
+						"have clicked into stay open.",
+					control: {
+						type: "toggle",
+						key: "closeOnModifierRelease",
+						defaultValue: DEFAULT_SETTINGS.closeOnModifierRelease,
+					},
+				},
+				{
+					name: "Hover delay",
+					desc: "How long the pointer must rest on a link before the preview opens (ms).",
+					control: number("hoverDelay"),
+				},
+				{
+					name: "Stillness delay",
+					desc:
+						"Extra guard against accidental triggers: pointer movement over the link restarts " +
+						"this countdown, so the preview only opens once the pointer holds still (ms, 0 = off).",
+					control: number("stillnessDelay"),
+				},
+			],
+		},
+		{
+			type: "group",
+			heading: "Dismissal",
+			items: [
+				{
+					name: "Dismissal mode",
+					desc:
+						"Hover: closes shortly after the pointer leaves the link or popover. " +
+						"Sticky: stays open until a click anywhere else. In either mode, the " +
+						"pin button on a preview keeps it open until you close it yourself.",
+					control: {
+						type: "dropdown",
+						key: "stickyMode",
+						options: {
+							hover: "Close when pointer leaves",
+							sticky: "Sticky (click elsewhere to close)",
+						},
+						defaultValue: DEFAULT_SETTINGS.stickyMode,
+					},
+				},
+				{
+					name: "Close on Escape",
+					desc:
+						"Escape closes the preview, including pinned previews. Turn this off if " +
+						"you use Vim key bindings, where Escape is part of typing and would " +
+						"keep dismissing a pinned preview.",
+					control: {
+						type: "toggle",
+						key: "closeOnEscape",
+						defaultValue: DEFAULT_SETTINGS.closeOnEscape,
+					},
+				},
+				{
+					name: "Hide grace period",
+					desc: "How long the preview lingers after the pointer leaves it (ms).",
+					control: number("hideDelay"),
+				},
+			],
+		},
+		{
+			type: "group",
+			heading: "Preview",
+			items: [
+				{
+					name: "Preview mode",
+					desc:
+						"Auto uses a live page preview on desktop and a metadata card on mobile. " +
+						"Reader extracts and shows just the article text, in your theme, with no scripts. " +
+						"Card is the lightest option. Anything that fails falls back to the card.",
+					control: {
+						type: "dropdown",
+						key: "renderMode",
+						options: {
+							auto: "Auto",
+							webview: "Live page (desktop only)",
+							reader: "Reader",
+							card: "Metadata card",
+						},
+						defaultValue: DEFAULT_SETTINGS.renderMode,
+					},
+				},
+				{
+					name: "Embedded players",
+					desc:
+						"In Auto mode, links to supported media (YouTube, Vimeo, Spotify, SoundCloud) " +
+						"load the provider's embedded player instead of the full page. " +
+						"Set host: webview in the per-domain modes below to force the full page for a site.",
+					control: {
+						type: "toggle",
+						key: "enableEmbeds",
+						defaultValue: DEFAULT_SETTINGS.enableEmbeds,
+					},
+				},
+				{
+					name: "Media volume",
+					desc:
+						"Playback volume for media inside previews, in percent (0 to 100). Also " +
+						"adjustable by hovering the speaker button on an open preview.",
+					control: number("mediaVolume"),
+				},
+				{
+					name: "Popover width",
+					desc: "Default width (px). You can also drag the popover's edges to resize it.",
+					control: number("popoverWidth"),
+				},
+				{
+					name: "Popover height",
+					desc: "Default height (px).",
+					control: number("popoverHeight"),
+				},
+				{
+					name: "Remember resized size",
+					desc: "After dragging the popover edges, keep that size as the new default.",
+					control: {
+						type: "toggle",
+						key: "persistResize",
+						defaultValue: DEFAULT_SETTINGS.persistResize,
+					},
+				},
+				{
+					name: "Page zoom",
+					desc: "Zoom for the live page preview, in percent (25 to 150).",
+					control: number("webviewZoom"),
+				},
+				{
+					name: "Zoom key",
+					desc: ZOOM_KEY_DESC,
+					aliases: ["zoom", "scroll"],
+					render: hooks.renderZoomKey,
+				},
+			],
+		},
+		{
+			type: "group",
+			heading: "Privacy",
+			items: [
+				{
+					name: "Remember preview logins",
+					desc:
+						"Live previews browse in their own cookie storage, separate from Obsidian " +
+						"and from your system browser; Hoverlay itself never reads or stores " +
+						"credentials. Off: anything you sign into inside a preview stays signed " +
+						"in only until you quit Obsidian, and nothing is written to disk. On: " +
+						"Electron keeps preview cookies on disk so logins survive restarts. " +
+						"Switching either way starts previews from a fresh cookie jar; it does " +
+						"not erase data already saved.",
+					control: {
+						type: "toggle",
+						key: "persistLogins",
+						defaultValue: DEFAULT_SETTINGS.persistLogins,
+					},
+				},
+			],
+		},
+		{
+			type: "group",
+			heading: "Filtering",
+			items: [
+				{
+					name: "Blocked domains",
+					desc: "Never preview these hosts. One per line, e.g. example.com (also matches sub.example.com).",
+					control: {
+						type: "textarea",
+						key: "domainBlocklist",
+						placeholder: "example.com",
+						defaultValue: DEFAULT_SETTINGS.domainBlocklist,
+					},
+				},
+				{
+					name: "Per-domain preview mode",
+					desc:
+						"Override the preview mode for specific hosts. One per line as host: mode, " +
+						"where mode is auto, webview, reader, card or embed. Subdomains match; the most " +
+						"specific entry wins. webview forces the full page even for media links; " +
+						"embed forces the embedded player even when the global toggle is off. " +
+						"Example: heavysite.com: card",
+					control: {
+						type: "textarea",
+						key: "domainModes",
+						placeholder: "example.com: reader",
+						defaultValue: DEFAULT_SETTINGS.domainModes,
+					},
+				},
+			],
+		},
+	];
 }
 
 export class HoverlaySettingTab extends PluginSettingTab {
@@ -90,48 +379,130 @@ export class HoverlaySettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	/** always-visible numeric field with native up/down steppers, clamped on change */
-	private addNumberField(setting: Setting, opts: NumberFieldOptions): void {
-		const scale = opts.displayScale ?? 1;
+	/** always-visible numeric field with native up/down steppers, clamped on
+	 *  change; bounds come from NUMBER_FIELDS, shared with the declarative
+	 *  setting definitions */
+	private addNumberField(setting: Setting, key: NumberFieldKey): void {
+		const spec = NUMBER_FIELDS[key];
 		setting.addText((text) => {
 			text.inputEl.type = "number";
-			text.inputEl.min = String(opts.min);
-			text.inputEl.max = String(opts.max);
-			text.inputEl.step = String(opts.step);
+			text.inputEl.min = String(spec.min);
+			text.inputEl.max = String(spec.max);
+			text.inputEl.step = String(spec.step);
 			text.inputEl.addClass("hoverlay-number-input");
-			text.setValue(String(Math.round(opts.get() * scale * 100) / 100));
+			text.setValue(String(displayNumberField(spec, this.plugin.settings[key])));
 			text.onChange(async (value) => {
 				const parsed = Number(value);
 				if (!Number.isFinite(parsed)) return;
-				const clamped = Math.min(opts.max, Math.max(opts.min, parsed));
-				// avoid float dust when converting display units back to factors
-				opts.set(Math.round((clamped / scale) * 10000) / 10000);
-				await this.plugin.saveSettings();
+				await this.setControlValue(key, parsed);
 			});
 		});
 	}
 
+	/** hooks bound to this tab; BOTH render paths execute them */
+	private renderHooks(): SettingRenderHooks {
+		return {
+			renderModifiers: (setting) => this.renderModifierButtons(setting),
+			renderZoomKey: (setting) => this.renderZoomKeySetting(setting),
+		};
+	}
+
+	/** Obsidian 1.13+ renders and search-indexes the tab from these. The
+	 *  entry shapes are structurally valid SettingDefinitionItems; the cast
+	 *  bridges the union's optional-never members, and the rendered-tab e2e
+	 *  assertion is the runtime guarantee that 1.13 accepts them */
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return settingDefinitions(this.renderHooks()) as unknown as SettingDefinitionItem[];
+	}
+
+	/** re-render whichever path is live: 1.13+ re-renders the definitions
+	 *  via update() (display() is dead there); older versions re-run the
+	 *  display() interpreter */
+	private refreshTab(): void {
+		if (typeof (this as { update?: unknown }).update === "function") this.update();
+		else this.display();
+	}
+
+	/** percent-presented factors (media volume, page zoom) are stored as
+	 *  0..1 factors; translate for the declarative controls */
+	getControlValue(key: string): unknown {
+		const value = this.plugin.settings[key as keyof HoverlaySettings];
+		const spec = NUMBER_FIELDS[key as NumberFieldKey] as NumberFieldSpec | undefined;
+		if (spec && typeof value === "number") return displayNumberField(spec, value);
+		return value;
+	}
+
+	async setControlValue(key: string, value: unknown): Promise<void> {
+		const settings = this.plugin.settings as unknown as Record<string, unknown>;
+		const spec = NUMBER_FIELDS[key as NumberFieldKey] as NumberFieldSpec | undefined;
+		settings[key] =
+			spec && typeof value === "number" ? storeNumberField(spec, value) : value;
+		// saveSettings also refreshes the derived blocklist/domain-rule caches
+		await this.plugin.saveSettings();
+		// zoom key availability depends on this toggle; re-render so the
+		// zoom dropdown re-evaluates its conflicts
+		if (key === "closeOnModifierRelease") this.refreshTab();
+	}
+
+	/** pre-1.13 rendering: interpret the same definitions imperatively.
+	 *  Obsidian 1.13+ never calls this (non-empty getSettingDefinitions). */
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		this.displayTriggerSection(containerEl);
-		this.displayDismissalSection(containerEl);
-		this.displayPreviewSection(containerEl);
-		this.displayPrivacySection(containerEl);
-		this.displayFilteringSection(containerEl);
+		for (const group of settingDefinitions(this.renderHooks())) {
+			new Setting(containerEl).setHeading().setName(group.heading);
+			for (const item of group.items) this.renderEntry(containerEl, item);
+		}
 	}
 
-	private displayTriggerSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setHeading().setName("Trigger");
+	private renderEntry(containerEl: HTMLElement, item: DefinitionEntry): void {
+		const setting = new Setting(containerEl).setName(item.name);
+		if (item.desc) setting.setDesc(item.desc);
+		if (item.render) {
+			item.render(setting);
+			return;
+		}
+		const control = item.control;
+		if (!control) return;
+		// only the control types the definitions actually use; the drift
+		// guard asserts no definition strays outside this set
+		switch (control.type) {
+			case "toggle":
+				setting.addToggle((toggle) =>
+					toggle
+						.setValue(this.getControlValue(control.key) as boolean)
+						.onChange((value) => void this.setControlValue(control.key, value))
+				);
+				return;
+			case "dropdown":
+				setting.addDropdown((dropdown) => {
+					for (const [value, label] of Object.entries(control.options)) {
+						dropdown.addOption(value, label);
+					}
+					dropdown
+						.setValue(this.getControlValue(control.key) as string)
+						.onChange((value) => void this.setControlValue(control.key, value));
+				});
+				return;
+			case "number":
+				this.addNumberField(setting, control.key as NumberFieldKey);
+				return;
+			case "textarea":
+				setting.addTextArea((text) =>
+					text
+						.setPlaceholder(control.placeholder ?? "")
+						.setValue(this.getControlValue(control.key) as string)
+						.onChange((value) => void this.setControlValue(control.key, value))
+				);
+				return;
+		}
+	}
 
-		const modifierSetting = new Setting(containerEl)
-			.setName("Hold to trigger")
-			.setDesc(
-				"Modifiers that must be held while hovering for the preview to open. " +
-					"Select none to trigger on plain hover; select several to require the combination."
-			);
+	/** the modifier button row; shared by the declarative renderer (1.13+)
+	 *  and the display() interpreter */
+	private renderModifierButtons(setting: Setting): void {
 		for (const mod of ["ctrl", "alt", "shift", "meta"] as ModifierKey[]) {
-			modifierSetting.addButton((button) => {
+			setting.addButton((button) => {
 				button.setButtonText(MODIFIER_LABELS[mod]);
 				if (this.plugin.settings.modifiers.includes(mod)) button.setCta();
 				button.onClick(async () => {
@@ -140,214 +511,17 @@ export class HoverlaySettingTab extends PluginSettingTab {
 						? current.filter((m) => m !== mod)
 						: [...current, mod];
 					await this.plugin.saveSettings();
-					this.display(); // refresh button highlight states
+					this.refreshTab(); // button highlights and zoom key availability
 				});
 			});
 		}
-
-		new Setting(containerEl)
-			.setName("Close on modifier release")
-			.setDesc(
-				"Close the preview as soon as a required modifier is released. Only applies " +
-					"when modifiers are selected above. Pinned previews and previews you " +
-					"have clicked into stay open."
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.closeOnModifierRelease).onChange(async (value) => {
-					this.plugin.settings.closeOnModifierRelease = value;
-					await this.plugin.saveSettings();
-					this.display(); // zoom key availability depends on this
-				})
-			);
-
-		this.addNumberField(
-			new Setting(containerEl)
-				.setName("Hover delay")
-				.setDesc("How long the pointer must rest on a link before the preview opens (ms)."),
-			{
-				min: 0,
-				max: 3000,
-				step: 50,
-				get: () => this.plugin.settings.hoverDelay,
-				set: (value) => (this.plugin.settings.hoverDelay = value),
-			}
-		);
-
-		this.addNumberField(
-			new Setting(containerEl)
-				.setName("Stillness delay")
-				.setDesc(
-					"Extra guard against accidental triggers: pointer movement over the link restarts " +
-						"this countdown, so the preview only opens once the pointer holds still (ms, 0 = off)."
-				),
-			{
-				min: 0,
-				max: 3000,
-				step: 50,
-				get: () => this.plugin.settings.stillnessDelay,
-				set: (value) => (this.plugin.settings.stillnessDelay = value),
-			}
-		);
-
 	}
 
-	private displayDismissalSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setHeading().setName("Dismissal");
-
-		new Setting(containerEl)
-			.setName("Dismissal mode")
-			.setDesc(
-				"Hover: closes shortly after the pointer leaves the link or popover. " +
-					"Sticky: stays open until a click anywhere else. In either mode, the " +
-					"pin button on a preview keeps it open until you close it yourself."
-			)
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("hover", "Close when pointer leaves")
-					.addOption("sticky", "Sticky (click elsewhere to close)")
-					.setValue(this.plugin.settings.stickyMode)
-					.onChange(async (value) => {
-						this.plugin.settings.stickyMode = value as StickyMode;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Close on Escape")
-			.setDesc(
-				"Escape closes the preview, including pinned previews. Turn this off if " +
-					"you use Vim key bindings, where Escape is part of typing and would " +
-					"keep dismissing a pinned preview."
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.closeOnEscape).onChange(async (value) => {
-					this.plugin.settings.closeOnEscape = value;
-					await this.plugin.saveSettings();
-				})
-			);
-
-		this.addNumberField(
-			new Setting(containerEl)
-				.setName("Hide grace period")
-				.setDesc("How long the preview lingers after the pointer leaves it (ms)."),
-			{
-				min: 100,
-				max: 3000,
-				step: 50,
-				get: () => this.plugin.settings.hideDelay,
-				set: (value) => (this.plugin.settings.hideDelay = value),
-			}
-		);
-
-	}
-
-	private displayPreviewSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setHeading().setName("Preview");
-
-		new Setting(containerEl)
-			.setName("Preview mode")
-			.setDesc(
-				"Auto uses a live page preview on desktop and a metadata card on mobile. " +
-					"Reader extracts and shows just the article text, in your theme, with no scripts. " +
-					"Card is the lightest option. Anything that fails falls back to the card."
-			)
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("auto", "Auto")
-					.addOption("webview", "Live page (desktop only)")
-					.addOption("reader", "Reader")
-					.addOption("card", "Metadata card")
-					.setValue(this.plugin.settings.renderMode)
-					.onChange(async (value) => {
-						this.plugin.settings.renderMode = value as RenderMode;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Embedded players")
-			.setDesc(
-				"In Auto mode, links to supported media (YouTube, Vimeo, Spotify, SoundCloud) " +
-					"load the provider's embedded player instead of the full page. " +
-					"Set host: webview in the per-domain modes below to force the full page for a site."
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.enableEmbeds).onChange(async (value) => {
-					this.plugin.settings.enableEmbeds = value;
-					await this.plugin.saveSettings();
-				})
-			);
-
-		this.addNumberField(
-			new Setting(containerEl)
-				.setName("Media volume")
-				.setDesc(
-					"Playback volume for media inside previews, in percent (0 to 100). Also " +
-						"adjustable by hovering the speaker button on an open preview."
-				),
-			{
-				min: 0,
-				max: 100,
-				step: 5,
-				displayScale: 100,
-				get: () => this.plugin.settings.mediaVolume,
-				set: (value) => (this.plugin.settings.mediaVolume = value),
-			}
-		);
-
-		this.addNumberField(
-			new Setting(containerEl)
-				.setName("Popover width")
-				.setDesc("Default width (px). You can also drag the popover's edges to resize it."),
-			{
-				min: 260,
-				max: 2000,
-				step: 20,
-				get: () => this.plugin.settings.popoverWidth,
-				set: (value) => (this.plugin.settings.popoverWidth = value),
-			}
-		);
-
-		this.addNumberField(
-			new Setting(containerEl).setName("Popover height").setDesc("Default height (px)."),
-			{
-				min: 180,
-				max: 1500,
-				step: 20,
-				get: () => this.plugin.settings.popoverHeight,
-				set: (value) => (this.plugin.settings.popoverHeight = value),
-			}
-		);
-
-		new Setting(containerEl)
-			.setName("Remember resized size")
-			.setDesc("After dragging the popover edges, keep that size as the new default.")
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.persistResize).onChange(async (value) => {
-					this.plugin.settings.persistResize = value;
-					await this.plugin.saveSettings();
-				})
-			);
-
-		// Page zoom is the static render zoom and always applies, so it is
-		// never disabled; only the live scroll-zoom key below varies
-		this.addNumberField(
-			new Setting(containerEl)
-				.setName("Page zoom")
-				.setDesc("Zoom for the live page preview, in percent (25 to 150)."),
-			{
-				min: 25,
-				max: 150,
-				step: 5,
-				displayScale: 100,
-				get: () => this.plugin.settings.webviewZoom,
-				set: (value) => (this.plugin.settings.webviewZoom = value),
-			}
-		);
-
-		// with close-on-modifier-release, trigger keys are held for the
-		// popover's whole life, so they can't double as the zoom key; migrate
-		// a conflicting stored choice to a free key, or to Off when none remain
+	/** the conflict-aware zoom key dropdown; shared by both render paths.
+	 *  With close-on-modifier-release, trigger keys are held for the
+	 *  popover's whole life, so they can't double as the zoom key; migrate
+	 *  a conflicting stored choice to a free key, or to Off when none remain */
+	private renderZoomKeySetting(setting: Setting): void {
 		const { modifiers, closeOnModifierRelease } = this.plugin.settings;
 		const conflictsApply = closeOnModifierRelease && modifiers.length > 0;
 		const resolvedZoom = resolveZoomModifier(
@@ -363,99 +537,38 @@ export class HoverlaySettingTab extends PluginSettingTab {
 			}
 		}
 
-		let zoomKeyDesc =
-			"Hold this key and scroll over an open preview to zoom it. Off disables scroll zoom.";
 		if (conflictsApply) {
-			zoomKeyDesc +=
-				" Keys used by your trigger combination are unavailable while close on modifier release is on.";
+			setting.setDesc(
+				ZOOM_KEY_DESC +
+					" Keys used by your trigger combination are unavailable while close on modifier release is on."
+			);
 		}
 
-		new Setting(containerEl)
-			.setName("Zoom key")
-			.setDesc(zoomKeyDesc)
-			.addDropdown((dropdown) => {
-				const conflicted = (option: ZoomModifier) =>
-					conflictsApply && zoomConflictsWithTriggers(option, modifiers);
-				const label = (text: string, option: ZoomModifier) =>
-					conflicted(option) ? `${text} (used by trigger)` : text;
+		setting.addDropdown((dropdown) => {
+			const conflicted = (option: ZoomModifier) =>
+				conflictsApply && zoomConflictsWithTriggers(option, modifiers);
+			const label = (text: string, option: ZoomModifier) =>
+				conflicted(option) ? `${text} (used by trigger)` : text;
 
-				dropdown
-					.addOption("ctrl", label("Ctrl/Cmd", "ctrl"))
-					.addOption("alt", label("Alt", "alt"))
-					.addOption("shift", label("Shift", "shift"))
-					.addOption("none", "Off")
-					.setValue(this.plugin.settings.zoomModifier)
-					.onChange(async (value) => {
-						this.plugin.settings.zoomModifier = value as ZoomModifier;
-						await this.plugin.saveSettings();
-					});
-
-				dropdown.selectEl.addClass("hoverlay-zoom-select");
-				if (conflictsApply) {
-					dropdown.selectEl.title =
-						"Keys held by your trigger combination cannot zoom while close on modifier release is on.";
-					for (const option of Array.from(dropdown.selectEl.options)) {
-						option.disabled = conflicted(option.value as ZoomModifier);
-					}
-				}
-			});
-	}
-
-	private displayPrivacySection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setHeading().setName("Privacy");
-
-		new Setting(containerEl)
-			.setName("Remember preview logins")
-			.setDesc(
-				"Live previews browse in their own cookie storage, separate from Obsidian " +
-					"and from your system browser; Hoverlay itself never reads or stores " +
-					"credentials. Off: anything you sign into inside a preview stays signed " +
-					"in only until you quit Obsidian, and nothing is written to disk. On: " +
-					"Electron keeps preview cookies on disk so logins survive restarts. " +
-					"Switching either way starts previews from a fresh cookie jar; it does " +
-					"not erase data already saved."
-			)
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.persistLogins).onChange(async (value) => {
-					this.plugin.settings.persistLogins = value;
+			dropdown
+				.addOption("ctrl", label("Ctrl/Cmd", "ctrl"))
+				.addOption("alt", label("Alt", "alt"))
+				.addOption("shift", label("Shift", "shift"))
+				.addOption("none", "Off")
+				.setValue(this.plugin.settings.zoomModifier)
+				.onChange(async (value) => {
+					this.plugin.settings.zoomModifier = value as ZoomModifier;
 					await this.plugin.saveSettings();
-				})
-			);
-	}
+				});
 
-	private displayFilteringSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setHeading().setName("Filtering");
-
-		new Setting(containerEl)
-			.setName("Blocked domains")
-			.setDesc("Never preview these hosts. One per line, e.g. example.com (also matches sub.example.com).")
-			.addTextArea((text) =>
-				text
-					.setPlaceholder("example.com")
-					.setValue(this.plugin.settings.domainBlocklist)
-					.onChange(async (value) => {
-						this.plugin.settings.domainBlocklist = value;
-						await this.plugin.saveSettings();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName("Per-domain preview mode")
-			.setDesc(
-				"Override the preview mode for specific hosts. One per line as host: mode, " +
-					"where mode is auto, webview, reader, card or embed. Subdomains match; the most " +
-					"specific entry wins. webview forces the full page even for media links; " +
-					"embed forces the embedded player even when the global toggle is off. " +
-					"Example: heavysite.com: card"
-			)
-			.addTextArea((text) =>
-				text
-					.setPlaceholder("example.com: reader")
-					.setValue(this.plugin.settings.domainModes)
-					.onChange(async (value) => {
-						this.plugin.settings.domainModes = value;
-						await this.plugin.saveSettings();
-					})
-			);
+			dropdown.selectEl.addClass("hoverlay-zoom-select");
+			if (conflictsApply) {
+				dropdown.selectEl.title =
+					"Keys held by your trigger combination cannot zoom while close on modifier release is on.";
+				for (const option of Array.from(dropdown.selectEl.options)) {
+					option.disabled = conflicted(option.value as ZoomModifier);
+				}
+			}
+		});
 	}
 }

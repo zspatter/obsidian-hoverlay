@@ -405,8 +405,17 @@ export class PopoverManager {
 
 		// the popover lives in the window that was hovered, not necessarily
 		// the main one; rect anchors (cursor command) come from the focused
-		// window, which is what activeDocument tracks
-		const doc = isAnchorElement(anchor) ? anchor.ownerDocument : activeDocument;
+		// window, which is what activeDocument tracks. A just-closed window
+		// (the 1.13+ settings window, a closed pop-out) can leave
+		// activeDocument pointing at a DEAD document indefinitely, and a
+		// popover rendered there is invisible; fall back to the main window
+		const tracked = activeDocument;
+		const trackedAlive = !!tracked.defaultView && !tracked.defaultView.closed;
+		const doc = isAnchorElement(anchor)
+			? anchor.ownerDocument
+			: trackedAlive
+				? tracked
+				: document;
 		const win = doc.defaultView ?? activeWindow;
 
 		const size = this.popoverSizeFor(presentation, win);

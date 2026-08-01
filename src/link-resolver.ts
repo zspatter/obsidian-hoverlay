@@ -72,7 +72,7 @@ export function resolveLinkAt(
  * [title](url) value's title in the text and the URL in data-href.
  */
 function resolveInProperties(el: Element, normalize: Normalizer): ResolvedLink | null {
-	const linkEl = el.closest(".metadata-property-value .external-link") as HTMLElement | null;
+	const linkEl = el.closest<HTMLElement>(".metadata-property-value .external-link");
 	if (!linkEl) return null;
 	if (linkEl.classList.contains("internal-link")) return null;
 	const raw = linkEl.getAttribute("data-href") ?? linkEl.textContent ?? "";
@@ -121,7 +121,7 @@ function resolveInEditor(
 	evt: MouseEvent,
 	normalize: Normalizer
 ): ResolvedLink | null {
-	const editorEl = el.closest(".cm-editor") as HTMLElement | null;
+	const editorEl = el.closest<HTMLElement>(".cm-editor");
 	if (!editorEl) return null;
 
 	const view = EditorView.findFromDOM(editorEl);
@@ -137,7 +137,7 @@ function resolveInEditor(
 	const url = normalize(rawLink);
 	if (!url) return null;
 
-	const token = el.closest(".cm-url, .cm-link, .cm-underline") as HTMLElement | null;
+	const token = el.closest<HTMLElement>(".cm-url, .cm-link, .cm-underline");
 	return { url, anchor: token ?? (el as HTMLElement) };
 }
 
