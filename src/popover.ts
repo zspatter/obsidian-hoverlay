@@ -1,7 +1,14 @@
 import { Platform, setIcon } from "obsidian";
 import type { Editor } from "obsidian";
 import type HoverlayPlugin from "./main";
-import { modifiersHeld, isHostBlocked, resolveZoomModifier, webviewPartition } from "./rules";
+import {
+	modifiersHeld,
+	isHostBlocked,
+	resolveZoomModifier,
+	webviewPartition,
+	dragInProgress,
+	pressCancelsPendingHover,
+} from "./rules";
 import type { ZoomModifier } from "./rules";
 import { shouldDismiss } from "./dismissal";
 import type { DismissalEvent } from "./dismissal";
@@ -165,6 +172,10 @@ export class PopoverManager {
 			return;
 		}
 
+		// a mouseover with a button held is a selection drag sweeping across
+		// the note, not a hover; never open (and skip the editor scan)
+		if (dragInProgress(evt.buttons)) return;
+
 		const link = this.resolveLinkCached(target, evt);
 
 		if (!link) {
@@ -222,6 +233,8 @@ export class PopoverManager {
 	}
 
 	onMouseDown(evt: MouseEvent): void {
+		// starting a click or a selection drag ends any pending hover countdown
+		if (pressCancelsPendingHover(evt.button, Platform.isDesktopApp)) this.cancelShow();
 		if (!this.popoverEl) return;
 		const inside = this.popoverEl.contains(evt.target as Node | null);
 		// mouse back/forward buttons: inside they drive the preview's history

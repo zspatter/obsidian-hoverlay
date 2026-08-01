@@ -155,6 +155,51 @@ describe("hover trigger", () => {
 	});
 });
 
+describe("selection drags", () => {
+	const platform = Platform as { isDesktopApp: boolean };
+	afterEach(() => {
+		platform.isDesktopApp = false;
+	});
+
+	it("a drag sweeping across a link never opens a popover", () => {
+		wire(makePlugin());
+		const link = addLink("https://example.com/");
+		hover(link, { buttons: 1 });
+		vi.advanceTimersByTime(2000);
+		expect(popover()).toBeNull();
+		// released and re-hovered: previews come back
+		hover(link);
+		vi.advanceTimersByTime(400);
+		expect(popover()).not.toBeNull();
+	});
+
+	it("desktop: pressing the mouse during the countdown cancels the pending preview", () => {
+		platform.isDesktopApp = true;
+		wire(makePlugin());
+		const link = addLink("https://example.com/");
+		hover(link);
+		vi.advanceTimersByTime(200);
+		mousedownOn(link, { button: 0 });
+		vi.advanceTimersByTime(2000);
+		expect(popover()).toBeNull();
+		// a fresh hover after the gesture still previews
+		hover(link);
+		vi.advanceTimersByTime(400);
+		expect(popover()).not.toBeNull();
+	});
+
+	it("mobile: a tap's synthetic mouseover-then-mousedown still opens the preview", () => {
+		wire(makePlugin());
+		const link = addLink("https://example.com/");
+		// compatibility mouse events from a tap fire with buttons 0, and the
+		// mousedown lands milliseconds after the mouseover that armed the timer
+		hover(link);
+		mousedownOn(link, { button: 0 });
+		vi.advanceTimersByTime(400);
+		expect(popover()).not.toBeNull();
+	});
+});
+
 describe("trigger modifiers", () => {
 	it("requires the configured modifier combination", () => {
 		wire(makePlugin({ modifiers: ["ctrl"] }));

@@ -6,6 +6,12 @@ All notable changes to Hoverlay are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Selecting text with the mouse no longer opens a preview when the
+  selection sweeps across a link, and pressing the mouse button on a link
+  cancels a preview that was about to open
+
 ## [0.3.0] - 2026-07-09
 
 ### Added

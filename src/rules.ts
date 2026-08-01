@@ -28,6 +28,26 @@ export function modifiersHeld(evt: ModifierState, required: ModifierKey[]): bool
 	});
 }
 
+/**
+ * A mouseover that arrives while any mouse button is held is part of a drag
+ * (a text selection sweeping across a link), not hover intent, and must not
+ * open a preview. Touch taps synthesize their compatibility mouseover before
+ * the mousedown, with buttons 0, so this never suppresses tap previews.
+ */
+export function dragInProgress(buttons: number): boolean {
+	return buttons !== 0;
+}
+
+/**
+ * Pressing the primary button over the note starts a click or a text
+ * selection; either way the hover intent is over and a pending preview must
+ * not fire mid-gesture. Desktop only: a mobile tap synthesizes its mousedown
+ * right after the mouseover that legitimately scheduled the preview.
+ */
+export function pressCancelsPendingHover(button: number, isDesktop: boolean): boolean {
+	return isDesktop && button === 0;
+}
+
 /** "none" = scroll zoom deliberately off */
 export type ZoomModifier = "ctrl" | "alt" | "shift" | "none";
 

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+	dragInProgress,
 	getBlockedHosts,
 	isHostBlocked,
 	matchDomainMode,
 	modifiersHeld,
 	parseDomainModes,
+	pressCancelsPendingHover,
 	resolveZoomModifier,
 	webviewPartition,
 	zoomConflictsWithTriggers,
@@ -40,6 +42,31 @@ describe("modifiersHeld", () => {
 		expect(modifiersHeld(state({ ctrlKey: true }), ["ctrl", "shift"])).toBe(false);
 		expect(modifiersHeld(state({ ctrlKey: true, shiftKey: true }), ["ctrl", "shift"])).toBe(true);
 		expect(modifiersHeld(state({ altKey: true }), ["meta"])).toBe(false);
+	});
+});
+
+describe("mouse button hover gating", () => {
+	it("dragInProgress: only a fully released mouse (buttons 0) counts as hovering", () => {
+		expect(dragInProgress(0)).toBe(false);
+		expect(dragInProgress(1)).toBe(true); // primary drag: text selection
+		expect(dragInProgress(2)).toBe(true); // secondary held
+		expect(dragInProgress(4)).toBe(true); // middle held: autoscroll
+	});
+
+	it("dragInProgress: every chord of the five buttons blocks (exhaustive)", () => {
+		for (let buttons = 0; buttons <= 31; buttons++) {
+			expect(dragInProgress(buttons)).toBe(buttons !== 0);
+		}
+	});
+
+	it("pressCancelsPendingHover: primary button, desktop only (exhaustive)", () => {
+		for (let button = 0; button <= 4; button++) {
+			for (const isDesktop of [false, true]) {
+				expect(pressCancelsPendingHover(button, isDesktop)).toBe(
+					isDesktop && button === 0
+				);
+			}
+		}
 	});
 });
 
