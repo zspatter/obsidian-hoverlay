@@ -13,6 +13,11 @@ export const Platform = { isDesktopApp: false };
 
 export function setIcon(): void {}
 
+// jsdom suites exercise the pre-1.13 (display interpreter) path
+export function requireApiVersion(): boolean {
+	return false;
+}
+
 // minimal class shells so modules declaring settings tabs can be imported;
 // suites exercising real tab behavior belong in the e2e tier
 export class PluginSettingTab {

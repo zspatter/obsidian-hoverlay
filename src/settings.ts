@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, Setting, requireApiVersion } from "obsidian";
 import type { SettingControl, SettingDefinitionItem } from "obsidian";
 import type HoverlayPlugin from "./main";
 import { resolveZoomModifier, zoomConflictsWithTriggers } from "./rules";
@@ -417,9 +417,11 @@ export class HoverlaySettingTab extends PluginSettingTab {
 
 	/** re-render whichever path is live: 1.13+ re-renders the definitions
 	 *  via update() (display() is dead there); older versions re-run the
-	 *  display() interpreter */
+	 *  display() interpreter. requireApiVersion is the guard form the
+	 *  plugin-review scanner recognizes (a typeof feature-check reads as an
+	 *  unguarded 1.13 API call and fails the review) */
 	private refreshTab(): void {
-		if (typeof (this as { update?: unknown }).update === "function") this.update();
+		if (requireApiVersion("1.13.0")) this.update();
 		else this.display();
 	}
 
