@@ -47,7 +47,10 @@ export const config: WebdriverIO.Config = {
 	},
 	waitforInterval: 250,
 	waitforTimeout: 5 * 1000,
-	logLevel: "warn",
+	// info logs one line per webdriver command in CI, so a wedged session
+	// names the command it died in (the 2026-07-27 macOS hang was
+	// unattributable at "warn"); local runs stay quiet
+	logLevel: env.CI ? "info" : "warn",
 	cacheDir,
 	injectGlobals: false,
 };

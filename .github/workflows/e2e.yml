@@ -70,7 +70,12 @@ jobs:
       - name: Run e2e tests
         run: npm run test:e2e
         env:
-          WDIO_MAX_INSTANCES: "2" # runners are 2-core
+          # two version-sessions in parallel, except macOS: that lane is the
+          # most contended (a 3-vCPU arm64 runner hosting two Electron apps)
+          # and the July 2026 weekly flakes were all contention races there
+          # (guest-focus handoff, hover timing, a chromedriver 114 wedge), so
+          # macOS runs the two Obsidian versions serially
+          WDIO_MAX_INSTANCES: ${{ matrix.os == 'macos-latest' && '1' || '2' }}
 
   # scheduled workflows are auto-disabled after 60 days without repository
   # activity; re-enabling resets that clock (same pattern as ci.yml)

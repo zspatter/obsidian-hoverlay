@@ -15,6 +15,12 @@ export const GUEST_POINTER_MSG = "__hoverlay:guest-pointer__";
 /** key events forwarded from the guest look like __hoverlay:key-down:Control__ */
 export const KEY_MSG_PREFIX = "__hoverlay:key-";
 
+/** set on the guest window by the bootstrap AFTER the mousedown/key
+ *  forwarders are installed, so its presence proves the forwarding channel
+ *  is live; the e2e tier polls it before clicking into a guest (the loading
+ *  spinner alone disappears at dom-ready, BEFORE the async injection runs) */
+export const GUEST_BOOTSTRAP_FLAG = "__hoverlayVolumeHook";
+
 export type GuestKeyDirection = "down" | "up";
 
 export interface GuestKeyEvent {
@@ -64,8 +70,8 @@ export function guestBootstrapJs(volume: number): string {
 		` if (e.key === "Control" || e.key === "Meta" || e.key === "Alt" || e.key === "Shift")` +
 		` console.log("${KEY_MSG_PREFIX}up:" + e.key + "__");` +
 		` }, true);` +
-		` if (!window.__hoverlayVolumeHook) {` +
-		` window.__hoverlayVolumeHook = true;` +
+		` if (!window.${GUEST_BOOTSTRAP_FLAG}) {` +
+		` window.${GUEST_BOOTSTRAP_FLAG} = true;` +
 		` window.addEventListener("play", (e) => {` +
 		` const t = e.target;` +
 		` if (t && typeof t.volume === "number" && typeof window.__hoverlayVolume === "number")` +

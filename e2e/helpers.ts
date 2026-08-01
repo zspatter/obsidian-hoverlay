@@ -16,6 +16,7 @@ export type ObsidianWindow = {
 		workspace: {
 			activeLeaf: {
 				view: {
+					getMode(): string;
 					editor: {
 						focus(): void;
 						setCursor(pos: { line: number; ch: number }): void;
@@ -72,8 +73,29 @@ export async function dismissPopover(): Promise<void> {
 	);
 }
 
-/** place the editor cursor and run the preview-link-under-cursor command */
-export async function previewAtCursor(line: number, ch: number): Promise<void> {
+/** place the editor cursor, run the preview-link-under-cursor command and
+ *  wait until the popover shows the expected URL. The pointer is parked
+ *  first: a stationary pointer left over a link re-arms a hover popover
+ *  when a mode toggle refolds the DOM beneath it (Chromium synthesizes a
+ *  fresh mouseover for the unmoved pointer), and that impostor would
+ *  replace the command's popover; waiting for the expected URL, not merely
+ *  a popover, guards the read side of the same race. */
+export async function previewAtCursor(
+	line: number,
+	ch: number,
+	expectedUrl: string
+): Promise<void> {
+	await parkPointer();
+	// callers toggle out of reading mode right before this; setCursor
+	// against a view still mid-toggle lands on stale editor state
+	await browser.waitUntil(
+		() =>
+			browser.execute(() => {
+				const { app } = window as unknown as ObsidianWindow;
+				return app.workspace.activeLeaf.view.getMode() === "source";
+			}),
+		{ timeoutMsg: "editor never left reading mode" }
+	);
 	await browser.execute(
 		(l: number, c: number) => {
 			const { app } = window as unknown as ObsidianWindow;
@@ -85,7 +107,16 @@ export async function previewAtCursor(line: number, ch: number): Promise<void> {
 		ch
 	);
 	await browser.executeObsidianCommand("hoverlay:preview-link-under-cursor");
-	await $(POPOVER).waitForExist({ timeout: 8000 });
+	await browser.waitUntil(
+		async () => {
+			try {
+				return (await $(HEADER_URL).getText()) === expectedUrl;
+			} catch {
+				return false; // popover missing or mid-rebuild
+			}
+		},
+		{ timeout: 8000, timeoutMsg: `no popover showing ${expectedUrl}` }
+	);
 }
 
 /** merge values into the live plugin settings (saveSettings refreshes the

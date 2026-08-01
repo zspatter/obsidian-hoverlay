@@ -10,15 +10,23 @@ import {
 	setSettings,
 	snapshotSettings,
 } from "../helpers";
+import { GUEST_BOOTSTRAP_FLAG } from "../../src/guest-scripts";
 
 const EXAMPLE_LINK = '.markdown-preview-view a[href="https://example.com/"]';
 const WEBVIEW = ".hoverlay-webview";
 const PIN_BUTTON = '.hoverlay-header [aria-label^="Pin"]';
 
-/** wait for the guest to reach dom-ready: the loading spinner is removed and
- *  the key-forwarding bootstrap has been injected */
+/** wait for the guest to be truly ready for interaction. The loading
+ *  spinner disappears at dom-ready, but the mousedown/key-forwarding
+ *  bootstrap is injected asynchronously AFTER that; a click landing in the
+ *  gap finds no forwarder, so the focus grant is bounced with no re-grant
+ *  path (the 2026-07 macOS CI flake). Poll the bootstrap's own flag. */
 async function waitForGuestReady(): Promise<void> {
 	await $(".hoverlay-loading").waitForExist({ reverse: true, timeout: 15000 });
+	await browser.waitUntil(
+		async () => (await runInGuest(`!!window.${GUEST_BOOTSTRAP_FLAG}`)) === true,
+		{ timeoutMsg: "guest bootstrap flag never appeared" }
+	);
 }
 
 async function webviewHasHostFocus(): Promise<boolean> {
@@ -66,9 +74,19 @@ describe("guest interaction", function () {
 		await hoverAndWaitForPopover(EXAMPLE_LINK);
 		await waitForGuestReady();
 		await $(WEBVIEW).click();
-		await browser.waitUntil(webviewHasHostFocus, {
-			timeoutMsg: "webview never took host focus after a click",
-		});
+		// the accept/bounce handshake is deliberately a grace-timer race (see
+		// CLAUDE.md), so losing one round under CI contention is legal; mirror
+		// dismissPopover's retry philosophy: one more click, then fail
+		try {
+			await browser.waitUntil(webviewHasHostFocus, {
+				timeoutMsg: "webview never took host focus after a click",
+			});
+		} catch {
+			await $(WEBVIEW).click();
+			await browser.waitUntil(webviewHasHostFocus, {
+				timeoutMsg: "webview never took host focus after two clicks",
+			});
+		}
 		// focus an injected input inside the guest and type into it for real
 		await runInGuest(
 			`const i = document.createElement("input"); i.id = "e2e-input";` +
