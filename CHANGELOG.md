@@ -6,6 +6,8 @@ All notable changes to Hoverlay are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-01
+
 ### Fixed
 
 - Selecting text with the mouse no longer opens a preview when the
@@ -135,7 +137,8 @@ Initial release.
   delays, per-domain preview modes and a domain blocklist
 - "Preview link under cursor" command, bindable to a hotkey
 
-[Unreleased]: https://github.com/zspatter/obsidian-hoverlay/compare/0.3.0...HEAD
+[Unreleased]: https://github.com/zspatter/obsidian-hoverlay/compare/0.3.1...HEAD
+[0.3.1]: https://github.com/zspatter/obsidian-hoverlay/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/zspatter/obsidian-hoverlay/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.2...0.2.0
 [0.1.2]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.1...0.1.2
