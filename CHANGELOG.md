@@ -12,6 +12,19 @@ All notable changes to Hoverlay are documented here. The format follows
   URLs inside list properties preview in editing view, reading view and the
   File properties sidebar. Wikilink properties are untouched, as core Page
   Preview already handles those
+- Hoverlay's options now appear in Obsidian's settings search (Obsidian
+  1.13 and later)
+
+### Fixed
+
+- The "Preview link under cursor" command no longer opens an invisible
+  preview when Obsidian's focus tracking still points at a just-closed
+  window (such as the settings window on Obsidian 1.13+)
+
+### Changed
+
+- Updated the sanitizer dependency (DOMPurify) past a published security
+  advisory
 
 ## [0.3.1] - 2026-08-01
 

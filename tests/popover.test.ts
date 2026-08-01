@@ -263,6 +263,30 @@ describe("properties panel", () => {
 	});
 });
 
+describe("dead tracked window", () => {
+	it("cursor-command popovers fall back to the main document", () => {
+		// Obsidian 1.13+ opens settings in its own window; closing it can
+		// leave activeDocument pointing at the dead window indefinitely, and
+		// a popover rendered there is invisible
+		wire(makePlugin());
+		const globals = globalThis as { activeDocument?: Document };
+		const dead = document.implementation.createHTMLDocument("dead"); // defaultView null
+		const original = globals.activeDocument;
+		globals.activeDocument = dead;
+		try {
+			const editor = {
+				getCursor: () => ({ line: 0, ch: 12 }),
+				getLine: () => "[Example](https://example.com/)",
+			};
+			expect(manager.openAtEditorCursor(editor as never)).toBe(true);
+			expect(popover()).not.toBeNull(); // landed in the MAIN document
+			expect(dead.querySelector(".hoverlay-popover")).toBeNull();
+		} finally {
+			globals.activeDocument = original;
+		}
+	});
+});
+
 describe("trigger modifiers", () => {
 	it("requires the configured modifier combination", () => {
 		wire(makePlugin({ modifiers: ["ctrl"] }));
