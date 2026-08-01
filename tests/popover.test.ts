@@ -200,6 +200,69 @@ describe("selection drags", () => {
 	});
 });
 
+/** a properties-panel URL value, per the real DOM: a div with link classes
+ *  and data-href, never an anchor */
+function addPropertyLink(url: string, cls = "external-link"): HTMLElement {
+	const row = document.body.createDiv({ cls: "metadata-property" });
+	const value = row.createDiv({ cls: "metadata-property-value" });
+	const wrapper = value.createDiv({ cls: "metadata-link" });
+	const linkEl = wrapper.createDiv({
+		cls: "metadata-link-inner " + cls,
+		attr: { "data-href": url },
+	});
+	linkEl.textContent = url;
+	return linkEl;
+}
+
+describe("properties panel", () => {
+	it("an external URL property opens a preview", () => {
+		wire(makePlugin());
+		hover(addPropertyLink("https://example.com/clip"));
+		vi.advanceTimersByTime(400);
+		expect(headerUrl()).toBe("https://example.com/clip");
+	});
+
+	it("internal-link property values never trigger (core Page Preview territory)", () => {
+		wire(makePlugin());
+		hover(addPropertyLink("Links", "internal-link"));
+		vi.advanceTimersByTime(1000);
+		expect(popover()).toBeNull();
+	});
+
+	it("the domain blocklist applies to property links", () => {
+		wire(makePlugin({ domainBlocklist: "example.com" }));
+		hover(addPropertyLink("https://example.com/clip"));
+		vi.advanceTimersByTime(1000);
+		expect(popover()).toBeNull();
+	});
+
+	it("a property link detached mid-countdown never shows a popover", () => {
+		wire(makePlugin());
+		const linkEl = addPropertyLink("https://example.com/clip");
+		hover(linkEl);
+		vi.advanceTimersByTime(200);
+		// the panel re-rendered: the subtree is swapped with no mouseleave
+		linkEl.closest(".metadata-property")!.remove();
+		vi.advanceTimersByTime(2000);
+		expect(popover()).toBeNull();
+	});
+
+	it("a mid-countdown subtree swap re-arms on the replacement element", () => {
+		wire(makePlugin());
+		const first = addPropertyLink("https://example.com/clip");
+		hover(first);
+		vi.advanceTimersByTime(200);
+		// the panel swapped its subtree under the stationary pointer;
+		// Chromium synthesizes a mouseover on the replacement, and the
+		// same-url dedup must not swallow it while its anchor is detached
+		first.closest(".metadata-property")!.remove();
+		const replacement = addPropertyLink("https://example.com/clip");
+		hover(replacement);
+		vi.advanceTimersByTime(400);
+		expect(headerUrl()).toBe("https://example.com/clip");
+	});
+});
+
 describe("trigger modifiers", () => {
 	it("requires the configured modifier combination", () => {
 		wire(makePlugin({ modifiers: ["ctrl"] }));

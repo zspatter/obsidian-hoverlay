@@ -6,6 +6,13 @@ All notable changes to Hoverlay are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Hover previews for external URLs in note properties: text properties and
+  URLs inside list properties preview in editing view, reading view and the
+  File properties sidebar. Wikilink properties are untouched, as core Page
+  Preview already handles those
+
 ## [0.3.1] - 2026-08-01
 
 ### Fixed
