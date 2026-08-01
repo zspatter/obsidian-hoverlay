@@ -82,7 +82,12 @@ export function renderWebview(
 		options;
 	const { onGuestFocus, onGuestPointer, onGuestKey } = options;
 	const frame = container.createDiv({ cls: "hoverlay-webview-frame" });
-	// the popover may live in a pop-out window; build in its document
+	// deliberately NOT createEl (obsidianmd/prefer-create-el): the element
+	// must be built by the pop-out's own document, stay DETACHED while
+	// partition, httpreferrer and src are set in that order (the partition
+	// is fixed at first navigation), and only attach afterwards; createEl
+	// appends on creation, and the global helper uses the wrong document
+	// for pop-out windows
 	const doc = container.ownerDocument;
 	const webview = doc.createElement("webview") as ElectronWebview;
 	// the partition is fixed at first navigation, so it must precede src
