@@ -83,9 +83,10 @@ export async function dismissPopover(): Promise<void> {
 export async function previewAtCursor(
 	line: number,
 	ch: number,
-	expectedUrl: string
+	expectedUrl: string,
+	park = ".inline-title"
 ): Promise<void> {
-	await parkPointer();
+	await parkPointer(park);
 	// callers toggle out of reading mode right before this; setCursor
 	// against a view still mid-toggle lands on stale editor state
 	await browser.waitUntil(

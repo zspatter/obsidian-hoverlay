@@ -196,8 +196,13 @@ export class PopoverManager {
 		// a pinned popover holds its ground: hovering other links must not
 		// replace it (unpin or close first; the explicit cursor command may)
 		if (this.pinned) return;
-		// same link already counting down: let the timer run instead of restarting it
-		if (this.pending && this.pending.url === url) return;
+		// same link already counting down: let the timer run instead of
+		// restarting it. A detached pending anchor is the exception: the
+		// surface swapped its subtree mid-countdown (properties panel
+		// re-render) and this mouseover is Chromium's synthesized entry into
+		// the replacement element, so re-arm on it or the hover dead-ends
+		// (the timer would fire on the detached anchor and show nothing)
+		if (this.pending && this.pending.url === url && this.pending.anchor.isConnected) return;
 		if (this.isBlocked(url)) return;
 
 		this.scheduleShow(url, anchor);
@@ -343,6 +348,11 @@ export class PopoverManager {
 		const fire = () => {
 			this.showTimer = null;
 			this.cancelShow(); // detach pending listeners
+			// re-rendering surfaces (the properties panel swaps its value
+			// subtree on edits) can orphan the anchor mid-countdown without a
+			// mouseleave; a detached anchor has a zeroed rect and would park
+			// the popover at the viewport origin
+			if (!anchor.isConnected) return;
 			this.show(url, anchor);
 		};
 		const arm = (delay: number) => {

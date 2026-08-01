@@ -46,7 +46,38 @@ export function resolveLinkAt(
 		const url = normalize(anchor.getAttribute("href") ?? "");
 		return url ? { url, anchor } : null;
 	}
-	return resolveInEditor(el, evt, normalize) ?? resolveThroughCanvasBlocker(el, evt, normalize);
+	return (
+		resolveInProperties(el, normalize) ??
+		resolveInEditor(el, evt, normalize) ??
+		resolveThroughCanvasBlocker(el, evt, normalize)
+	);
+}
+
+/**
+ * The properties panel renders link values as divs, never anchors: a URL
+ * text property is div.metadata-link-inner.external-link and a URL inside a
+ * list property is div.multi-select-pill-content.external-link, both under
+ * .metadata-property-value with the URL in the raw data-href attribute.
+ * Obsidian itself decides URL-ness (non-URL values render as a plain
+ * contenteditable div with no link classes), so matching .external-link is
+ * Obsidian's own verdict, not a heuristic. Wikilink values reuse the same
+ * wrapper with internal-link INSTEAD of external-link; like internal
+ * anchors, those belong to core Page Preview.
+ *
+ * Checked BEFORE the editor branch on purpose: in live preview the panel
+ * mounts inside .cm-editor, and the editor scan must never shadow this.
+ *
+ * data-href first, textContent second: Obsidian 1.5.3 (minAppVersion) sets
+ * no data-href and the rendered text IS the URL, while newer versions put a
+ * [title](url) value's title in the text and the URL in data-href.
+ */
+function resolveInProperties(el: Element, normalize: Normalizer): ResolvedLink | null {
+	const linkEl = el.closest(".metadata-property-value .external-link") as HTMLElement | null;
+	if (!linkEl) return null;
+	if (linkEl.classList.contains("internal-link")) return null;
+	const raw = linkEl.getAttribute("data-href") ?? linkEl.textContent ?? "";
+	const url = normalize(raw);
+	return url ? { url, anchor: linkEl } : null;
 }
 
 /**
