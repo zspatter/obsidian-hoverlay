@@ -13,6 +13,46 @@ export const Platform = { isDesktopApp: false };
 
 export function setIcon(): void {}
 
+// minimal class shells so modules declaring settings tabs can be imported;
+// suites exercising real tab behavior belong in the e2e tier
+export class PluginSettingTab {
+	app: unknown;
+	plugin: unknown;
+	containerEl = { empty: () => {} } as unknown;
+	constructor(app: unknown, plugin: unknown) {
+		this.app = app;
+		this.plugin = plugin;
+	}
+}
+
+export class Setting {
+	constructor(_containerEl: unknown) {}
+	setHeading(): this {
+		return this;
+	}
+	setName(): this {
+		return this;
+	}
+	setDesc(): this {
+		return this;
+	}
+	addText(): this {
+		return this;
+	}
+	addToggle(): this {
+		return this;
+	}
+	addDropdown(): this {
+		return this;
+	}
+	addTextArea(): this {
+		return this;
+	}
+	addButton(): this {
+		return this;
+	}
+}
+
 export async function requestUrl(): Promise<{ status: number; text: string }> {
 	return {
 		status: 200,
