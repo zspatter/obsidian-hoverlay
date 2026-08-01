@@ -6,6 +6,8 @@ All notable changes to Hoverlay are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-01
+
 ### Added
 
 - Hover previews for external URLs in note properties: text properties and
@@ -157,7 +159,8 @@ Initial release.
   delays, per-domain preview modes and a domain blocklist
 - "Preview link under cursor" command, bindable to a hotkey
 
-[Unreleased]: https://github.com/zspatter/obsidian-hoverlay/compare/0.3.1...HEAD
+[Unreleased]: https://github.com/zspatter/obsidian-hoverlay/compare/0.4.0...HEAD
+[0.4.0]: https://github.com/zspatter/obsidian-hoverlay/compare/0.3.1...0.4.0
 [0.3.1]: https://github.com/zspatter/obsidian-hoverlay/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/zspatter/obsidian-hoverlay/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/zspatter/obsidian-hoverlay/compare/0.1.2...0.2.0
